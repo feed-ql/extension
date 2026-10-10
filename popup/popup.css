@@ -67,3 +67,9 @@ h1 { font: 700 20px/1.1 var(--serif); letter-spacing: -0.02em; margin: 0; flex: 
   @keyframes enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }
 @media (hover: hover) { .btn:hover:not([disabled]) { border-color: var(--ink-2); } .btn.primary:hover:not([disabled]) { filter: brightness(1.05); } }
+
+.result { margin: 6px 0 0; font-size: 12px; }
+.result.good { color: #1a7f37; }
+.result.bad { color: #b3261e; }
+.result.muted { opacity: .7; }
+.result .btn { padding: 2px 8px; font-size: 12px; }

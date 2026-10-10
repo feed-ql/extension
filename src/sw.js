@@ -5,7 +5,7 @@ import { jitter } from './pacing.js';
 import { runAll } from './runner.js';
 import { listOffered } from './offered.js';
 import { signIn, signOut } from './auth.js';
-import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape } from './store.js';
+import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape, getResults, saveResults } from './store.js';
 import * as api from './api.js';
 import { permissionOrigins } from './engine/hosts.js';
 import { syncHeaderRules } from './headers.js';
@@ -29,7 +29,7 @@ const offeredList = (o) => listOffered({ getOffered, saveOffered, api, now: Date
 async function snapshot() {
   const [settings, state, auth] = await Promise.all([getSettings(), getState(), getAuth()]);
   const offered = auth ? await offeredList() : null;
-  return { settings, state, signedIn: !!auth, offered };
+  return { settings, state, signedIn: !!auth, offered, results: await getResults() };
 }
 
 /** Origins other enabled sites still need (so switching one off does not revoke what another uses). */
@@ -81,7 +81,10 @@ const handlers = {
     return snapshot();
   },
   async runNow() {
-    runAll({ force: true }); // fire and forget: the popup watches state
+    // The pass records its outcome per site in storage ('results'); the popup watches it. Written first so the popup
+    // never shows a stale outcome while the worker wakes up.
+    await saveResults({ at: Date.now(), done: false, sites: {} });
+    runAll({ force: true }).catch((e) => saveResults({ at: Date.now(), done: true, general: e.message, sites: {} }));
     return snapshot();
   },
   async serverStatus() { return api.getServerStatus().catch(() => null); },

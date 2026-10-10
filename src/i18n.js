@@ -14,6 +14,10 @@ export const STRINGS = {
     advanced: 'Debug',
     debug: 'Keep last raw responses on this device', saveRaw: 'Save raw response', saveShape: 'Capture request shape', noRaw: 'Nothing captured yet',
     language: 'Language', foot: 'Runs every 15–30 min while the browser is open.',
+    resOk: (n, d) => `OK, ${n} new` + (d ? `, ${d} known` : ''), resRunning: 'Running…', resNoTasks: 'Nothing to search: follow a topic with words in feedql',
+    resNotDue: (t) => `Nothing due until ${t}`, resBackoff: (t, why) => `Paused until ${t}` + (why && why !== 'server' && why !== 'site' ? ` (${why})` : ' (the site or feedql asked to slow down)'),
+    resPerm: 'Needs permission to read this site', allow: 'Allow', resSignedOut: (s) => `Signed out of ${s}: open it in this browser and sign in`, resError: (m) => `Error: ${m}`,
+    resBusy: 'A run is already in progress', resGeneral: (m) => `Run failed: ${m}`,
     signinFirst: 'Sign in first', errSignedOut: 'Your feedql session ended. Sign in again.', busy: 'A run is already in progress',
   },
   uk: {
@@ -30,6 +34,10 @@ export const STRINGS = {
     advanced: 'Діагностика',
     debug: 'Зберігати останні сирі відповіді на цьому пристрої', saveRaw: 'Зберегти сиру відповідь', saveShape: 'Зняти форму запитів', noRaw: 'Ще нічого не зафіксовано',
     language: 'Мова', foot: 'Працює кожні 15–30 хв, поки браузер відкритий.',
+    resOk: (n, d) => `ОК, ${n} нових` + (d ? `, ${d} відомих` : ''), resRunning: 'Працює…', resNoTasks: 'Нічого шукати: стежте в feedql за темою зі словами',
+    resNotDue: (t) => `Нічого до ${t}`, resBackoff: (t, why) => `Пауза до ${t}` + (why && why !== 'server' && why !== 'site' ? ` (${why})` : ' (сайт або feedql просить не поспішати)'),
+    resPerm: 'Потрібен дозвіл читати цей сайт', allow: 'Дозволити', resSignedOut: (s) => `Не виконано вхід на ${s}: відкрийте його в цьому браузері й увійдіть`, resError: (m) => `Помилка: ${m}`,
+    resBusy: 'Запуск уже триває', resGeneral: (m) => `Запуск не вдався: ${m}`,
     signinFirst: 'Спершу увійдіть', errSignedOut: 'Сесію feedql завершено. Увійдіть знову.', busy: 'Запуск уже триває',
   },
 };
