@@ -32,6 +32,8 @@ export class Refusal extends Error {
 }
 
 /** Fails the task, not the site. */
+import { checkRegex, timed, RegexBudgetError, MAX_REGEX_INPUT } from './regexguard.js';
+
 export class StepError extends Error {
   constructor(step, msg) {
     super(`${step}: ${msg}`);
@@ -75,6 +77,8 @@ function regexOf(src, global = false) {
     let flags = global ? 'g' : '';
     const m = /^\(\?([ims]+)\)/.exec(src);
     if (m) { flags += m[1]; src = src.slice(m[0].length); }
+    const bad = checkRegex(src);
+    if (bad) throw new StepError('regex', bad);
     re = new RegExp(src, flags);
     reCache.set(key, re);
   }
@@ -176,9 +180,10 @@ async function evalExtractor(x, e) {
     cands = await fromSelector(x, e);
   } else {
     const re = regexOf(regexSource(x, e.regex), !!e.all);
-    if (e.all) cands = [...x.resp.body.matchAll(re)].map((m) => group(m, e.group));
+    const body = x.resp.body.slice(0, MAX_REGEX_INPUT);
+    if (e.all) cands = timed(() => [...body.matchAll(re)].map((m) => group(m, e.group)));
     else {
-      const m = re.exec(x.resp.body);
+      const m = timed(() => re.exec(body));
       if (m) cands = [group(m, e.group)];
     }
     return finish(x, e, cands);
@@ -186,10 +191,12 @@ async function evalExtractor(x, e) {
   if (e.regex) {
     const re = regexOf(e.regex);
     const kept = [];
-    for (const c of cands) {
-      const m = re.exec(c);
-      if (m) kept.push(group(m, e.group));
-    }
+    timed(() => {
+      for (const c of cands) {
+        const m = re.exec(c.slice(0, MAX_REGEX_INPUT));
+        if (m) kept.push(group(m, e.group));
+      }
+    });
     cands = kept;
   }
   return finish(x, e, cands);
@@ -420,7 +427,7 @@ async function buildItems(rec, r, sc, env) {
     const tab = new Map();
     for (const n of evalPath(pathOf(j.root.path), r.json, r.json)) {
       let k = null;
-      try { k = await evalExtractor({ resp: r, sc, env, node: n }, j.key); } catch { k = null; }
+      try { k = await evalExtractor({ resp: r, sc, env, node: n }, j.key); } catch (err) { if (err instanceof RegexBudgetError) throw err; k = null; }
       if (typeof k === 'string' && !tab.has(k)) tab.set(k, n);
     }
     joins[name] = tab;
@@ -432,14 +439,14 @@ async function buildItems(rec, r, sc, env) {
     const ix = { resp: r, sc: isc, env, node: n.j, hnode: n.h, joins };
     for (const nv of it.vars || []) {
       let v;
-      try { v = await evalExtractor(ix, nv); } catch { v = null; }
+      try { v = await evalExtractor(ix, nv); } catch (err) { if (err instanceof RegexBudgetError) throw err; v = null; }
       item[nv.name] = v;
     }
     let dropped = false;
     for (const rule of it.drop_if || []) {
       const v = item[rule.var] ?? null;
       const s = stringify(v);
-      if ((rule.truthy && truthy(v)) || (rule.empty && s === '') || (rule.equals && s === rule.equals) || (rule.matches && regexOf(rule.matches).test(s))) { dropped = true; break; }
+      if ((rule.truthy && truthy(v)) || (rule.empty && s === '') || (rule.equals && s === rule.equals) || (rule.matches && timed(() => regexOf(rule.matches).test(s.slice(0, MAX_REGEX_INPUT))))) { dropped = true; break; }
     }
     if (dropped) { st.dropped++; continue; }
     const pl = it.pick_link;
@@ -453,9 +460,10 @@ async function buildItems(rec, r, sc, env) {
     }
     const m = it.map;
     const R = (t) => (t ? render(tpl(t), isc) : '');
-    const o = { external_id: R(m.external_id), url: R(m.url), title: R(m.title), text: R(m.text), author: R(m.author), author_url: R(m.author_url), published_at: R(m.published_at), lang: R(m.lang), place: R(m.place) };
+    const o = { external_id: R(m.external_id), url: R(m.url), discussion_url: R(m.discussion_url), title: R(m.title), text: R(m.text), author: R(m.author), author_url: R(m.author_url), published_at: R(m.published_at), lang: R(m.lang), place: R(m.place) };
     if (!o.external_id || !o.url || !o.text.trim() || !o.author || !o.published_at) { st.skipped++; continue; }
     const item2 = { external_id: o.external_id, url: o.url };
+    if (o.discussion_url) item2.discussion_url = o.discussion_url;
     if (o.title) item2.title = o.title;
     item2.text = o.text;
     item2.author = o.author;
@@ -493,11 +501,12 @@ export async function runTask(session, rec, task, env) {
   }
   const factor = Math.max(rec.tasks.count_factor || 0, 1);
   const size = rec.tasks.page_size || 50;
-  const res = { items: [], pages: 0, skipped: 0, dropped: 0, old: 0, nextCursor: '', steps: [] };
+  const res = { items: [], pages: 0, skipped: 0, dropped: 0, old: 0, nextCursor: '', unfinished: false, steps: [] };
   const vars = Object.create(null);
   const seen = new Set();
-  let cursor = t.cursor || '';
+  let cursor = '';
   for (let pageIx = 0; pageIx < pages; pageIx++) {
+    if (pageIx === 1 && t.cursor) cursor = t.cursor; // resumes an interrupted catch-up; page 1 never uses a cursor
     const sc = { query: t.query, count: Math.min(t.max * factor, size), cursor, offset: pg ? pageIx * (pg.offset_step || 0) : 0, since, now: env.now(), vars, consts: rec.consts || {} };
     const resps = await page(session, rec, env, sc, res);
     try {
@@ -520,10 +529,11 @@ export async function runTask(session, rec, task, env) {
       }
       cursor = '';
       if (pg && pg.cursor && resps[pg.step]) {
-        const v = await evalExtractor({ resp: resps[pg.step], sc, env }, pg.cursor).catch(() => null);
+        const v = await evalExtractor({ resp: resps[pg.step], sc, env }, pg.cursor).catch((err) => { if (err instanceof RegexBudgetError) throw err; return null; });
         cursor = typeof v === 'string' ? v : '';
       }
       res.nextCursor = cursor;
+      res.unfinished = !!t.catchup && !!pg && !!pg.cursor && older === 0 && cursor !== '' && (pageIx === pages - 1 || res.items.length >= t.max);
       if (res.items.length >= t.max || !pg || (pg.stop_at_since && older > 0) || (cursor === '' && !pg.offset_step) || b.items.length === 0) break;
     } finally {
       for (const r of Object.values(resps)) if (r.doc != null) await env.html.release(r.doc);

@@ -136,7 +136,7 @@
             "rawQuery": "{query} -filter:retweets -filter:replies{?since_date} since:{since_date}{/}",
             "count": "{count}",
             "querySource": "typed_query",
-            "product": "Top",
+            "product": "Latest",
             "withGrokTranslatedBio": false,
             "withQuickPromoteEligibilityTweetFields": false,
             "cursor": "{cursor}"
@@ -301,8 +301,9 @@
     },
     "map": {
       "external_id": "{item.id}",
-      "url": "{item.status_url}",
-      "text": "{item.text}{?item.link}\n\nLink: {item.link}{/}",
+      "url": "{item.link ?? item.status_url}",
+      "discussion_url": "{item.status_url}",
+      "text": "{item.text}{?item.link}\n\nDiscussion: {item.status_url}{/}",
       "author": "{item.author_full ?? item.author_plain}",
       "author_url": "https://x.com/{item.screen}",
       "published_at": "{item.published}",

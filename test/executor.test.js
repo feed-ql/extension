@@ -16,8 +16,9 @@ test('X search on the recorded fixture', async () => {
   }
   const first = res.items[0];
   assert.equal(first.author, 'Phil Eaton (@eatonphil)');
-  assert.equal(first.url, 'https://x.com/eatonphil/status/2096630185969803491');
-  assert.ok(first.text.includes('\n\nLink: https://theconsensus.dev/'), 'pick_link: the outbound link goes into the text');
+  assert.match(first.url, /^https:\/\/theconsensus\.dev\//, 'link-as-url: the article is the url');
+  assert.equal(first.discussion_url, 'https://x.com/eatonphil/status/2096630185969803491');
+  assert.ok(Object.keys(first).indexOf('discussion_url') === 2, 'discussion_url follows url like the Go struct');
   assert.equal(first.place, '@eatonphil');
   assert.equal(first.metrics.likes, 306);
   const search = d.calls.find((c) => c.stepId === 'search');
@@ -175,7 +176,7 @@ test('the pause hook runs between pages only', async () => {
   assert.deepEqual(pauses, [0, 1]);
 });
 
-test('cursor pagination: the cursor of page 1 is sent on page 2, task cursor starts the first page', async () => {
+test('cursor pagination: page 1 never has a cursor, a catch-up cursor opens page 2, page 3 follows the response', async () => {
   const rec = seed('x');
   const mk = (cursor) => JSON.stringify({ data: { tweets: [{ __typename: 'Tweet', rest_id: String(Math.random()).slice(2), legacy: { full_text: 'hi', created_at: 'Fri Oct 10 10:00:00 +0000 2026' }, core: { user_results: { result: { legacy: { screen_name: 'ann' } } } } }], c: { cursorType: 'Bottom', value: cursor } } });
   const d = xDoer();
@@ -185,12 +186,16 @@ test('cursor pagination: the cursor of page 1 is sent on page 2, task cursor sta
     if (req.stepId === 'search') return { status: 200, headers: new Headers(), body: mk(`CUR${++n}`) };
     return { status: 200, headers: new Headers(), body: d.bodies[req.stepId] };
   };
-  const res = await run(rec, { query: 'a', max: 10, pages: 2, cursor: 'START' }, env(d, { pause: async () => {} }));
+  const res = await run(rec, { query: 'a', max: 10, pages: 3, cursor: 'START', catchup: true }, env(d, { pause: async () => {} }));
   const searches = d.calls.filter((c) => c.stepId === 'search').map((c) => decodeURIComponent(c.url));
-  assert.equal(searches.length, 2);
-  assert.ok(searches[0].includes('"cursor":"START"'), searches[0]);
-  assert.ok(searches[1].includes('"cursor":"CUR1"'), searches[1]);
-  assert.equal(res.nextCursor, 'CUR2');
+  assert.equal(searches.length, 3);
+  assert.ok(!searches[0].includes('cursor') && !searches[0].includes('START'), searches[0]);
+  assert.ok(searches[1].includes('"cursor":"START"'), searches[1]);
+  assert.ok(searches[2].includes('"cursor":"CUR2"'), searches[2]);
+  assert.equal(res.nextCursor, 'CUR3');
+  assert.equal(res.unfinished, true);
+  const res2 = await run(rec, { query: 'a', max: 10, pages: 3, catchup: false }, env(d, { pause: async () => {} }));
+  assert.equal(res2.unfinished, false, 'only a catch-up can end unfinished');
 });
 
 test('Medium on the hand-authored fixture', async () => {
