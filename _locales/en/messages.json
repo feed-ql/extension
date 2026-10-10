@@ -1,0 +1,4 @@
+{
+  "extName": { "message": "feedql collector" },
+  "extDesc": { "message": "Brings posts from X and LinkedIn into your own feedql feed, fetched in your browser with your own sessions." }
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>feedql</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main id="app" aria-live="polite">
+    <header class="top">
+      <span class="mark" aria-hidden="true">f</span>
+      <h1 id="title"></h1>
+      <select id="lang" class="lang" aria-label="Language">
+        <option value="auto">Auto</option><option value="en">EN</option><option value="uk">UA</option>
+      </select>
+    </header>
+    <p id="lead" class="lead"></p>
+    <section id="auth" class="auth"></section>
+    <section id="sites" class="sites" hidden></section>
+    <section id="actions" class="actions" hidden>
+      <button id="run" class="btn primary" type="button"></button>
+    </section>
+    <details id="adv" class="adv" hidden>
+      <summary id="advTitle"></summary>
+      <label class="check"><input id="debug" type="checkbox"><span id="debugLabel"></span></label>
+      <button id="saveRaw" class="btn ghost" type="button"></button>
+      <p id="rawMsg" class="muted"></p>
+    </details>
+    <footer id="foot" class="foot"></footer>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

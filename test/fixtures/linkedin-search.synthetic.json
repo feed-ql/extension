@@ -1,0 +1,38 @@
+{
+  "_note": "SYNTHETIC fixture authored from the documented Voyager normalized-JSON shape, NOT recorded from a live session. Replace with a real capture (popup > Debug > Save raw response) when available.",
+  "data": { "data": { "searchDashClustersByAll": { "*elements": ["urn:li:fsd_searchCluster:1"] } } },
+  "included": [
+    {
+      "$type": "com.linkedin.voyager.dash.feed.Update",
+      "entityUrn": "urn:li:fsd_update:(urn:li:activity:7249871234567890123,SEARCH_SRP,DEFAULT,DEFAULT,false)",
+      "metadata": { "backendUrn": "urn:li:activity:7249871234567890123" },
+      "commentary": { "text": { "text": "Our team moved from polling to event-driven ingestion. Latency dropped 10x. Lessons inside." } },
+      "actor": {
+        "name": { "text": "Jane Doe" },
+        "navigationContext": { "actionTarget": "https://www.linkedin.com/in/jane-doe-123?miniProfileUrn=urn%3Ali%3Afsd_profile%3AABC" },
+        "subDescription": { "text": "2d • " }
+      },
+      "*socialDetail": "urn:li:fsd_socialDetail:(urn:li:activity:7249871234567890123,urn:li:activity:7249871234567890123,urn:li:highlightedReply:-)"
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.feed.SocialActivityCounts",
+      "entityUrn": "urn:li:fsd_socialActivityCounts:urn:li:activity:7249871234567890123",
+      "numLikes": 128, "numComments": 14, "numShares": 9
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.feed.Update",
+      "entityUrn": "urn:li:fsd_update:(urn:li:activity:7249871234567890123,SEARCH_SRP,DEFAULT,DEFAULT,false)",
+      "metadata": { "backendUrn": "urn:li:activity:7249871234567890123" },
+      "commentary": { "text": { "text": "duplicate entity for the same activity" } }
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.feed.Update",
+      "entityUrn": "urn:li:fsd_update:(urn:li:activity:7250001234567890456,SEARCH_SRP,DEFAULT,DEFAULT,false)",
+      "metadata": { "backendUrn": "urn:li:activity:7250001234567890456" },
+      "commentary": { "text": { "text": "Hiring: staff engineer for our data platform." } },
+      "actor": { "name": { "text": "Acme Corp" }, "navigationContext": { "actionTarget": "https://www.linkedin.com/company/acme/" } }
+    },
+    { "$type": "com.linkedin.voyager.dash.search.SearchClusterViewModel", "entityUrn": "urn:li:fsd_searchCluster:1", "items": [] },
+    { "$type": "com.linkedin.voyager.dash.feed.Update", "entityUrn": "urn:li:fsd_update:(urn:li:activity:7250009999999999999,X)", "commentary": { "text": {} } }
+  ]
+}

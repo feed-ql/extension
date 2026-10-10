@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "modifyHeaders", "requestHeaders": [
+      { "header": "origin", "operation": "set", "value": "https://x.com" },
+      { "header": "referer", "operation": "set", "value": "https://x.com/" }
+    ] },
+    "condition": { "urlFilter": "||x.com/i/api/", "resourceTypes": ["xmlhttprequest"], "initiatorDomains": ["plhenichcpggbflpgkalannbmfjhbmpd"] }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": { "type": "modifyHeaders", "requestHeaders": [
+      { "header": "origin", "operation": "set", "value": "https://www.linkedin.com" },
+      { "header": "referer", "operation": "set", "value": "https://www.linkedin.com/feed/" }
+    ] },
+    "condition": { "urlFilter": "||www.linkedin.com/voyager/api/", "resourceTypes": ["xmlhttprequest"], "initiatorDomains": ["plhenichcpggbflpgkalannbmfjhbmpd"] }
+  }
+]
