@@ -19,7 +19,7 @@ function resultLine(offer, r) {
   switch (r.status) {
     case 'ok': set(T.resOk(r.count, r.duplicates), 'good'); break;
     case 'running': set(T.resRunning, 'muted'); break;
-    case 'notasks': set(T.resNoTasks, 'muted'); break;
+    case 'notasks': set(T.resNoTasks(r.reason), 'muted'); break;
     case 'notdue': set(T.resNotDue(clock(r.until)), 'muted'); break;
     case 'backoff': set(T.resBackoff(clock(r.until), r.reason), 'bad'); break;
     case 'signedout': set(T.resSignedOut(offer.label || offer.site), 'bad'); break;
