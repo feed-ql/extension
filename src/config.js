@@ -12,6 +12,7 @@ export const EXT_API = {
   items: `${API_BASE}/api/v1/ext/items`,
   tasks: `${API_BASE}/api/v1/ext/tasks`,
   status: `${API_BASE}/api/v1/ext/status`,
+  offered: `${API_BASE}/api/v1/ext/offered`,
   sites: `${API_BASE}/api/v1/ext/sites`,
 };
 export const DEVICE_HEADER = 'X-Ext-Device';
