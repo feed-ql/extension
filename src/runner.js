@@ -200,7 +200,7 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
       if (!(srv.tasks || []).length) {
         if (srvUntil > now) await report(site, { status: 'backoff', until: srvUntil, reason: 'server' });
         else if (srv.next_due_at && !force) await report(site, { status: 'notdue', until: Date.parse(srv.next_due_at) });
-        else await report(site, { status: 'notasks' });
+        else await report(site, { status: 'notasks', reason: srv.reason || '' });
         continue;
       }
       if (force ? on.backoffUntil > now : !due(on, now, interval)) {
