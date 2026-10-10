@@ -192,3 +192,22 @@ test('cursor pagination: the cursor of page 1 is sent on page 2, task cursor sta
   assert.ok(searches[1].includes('"cursor":"CUR1"'), searches[1]);
   assert.equal(res.nextCursor, 'CUR2');
 });
+
+test('Medium on the hand-authored fixture', async () => {
+  const d = staticDoer({ bodies: { search: fixture('medium-search.handauthored.json') } });
+  const res = await run(seed('medium'), { query: 'rate limiting', max: 10 }, env(d));
+  assert.equal(res.items.length, 3);
+  assert.equal(res.dropped, 1);
+  const it = res.items[0];
+  assert.equal(it.url, 'https://medium.com/p/1a2b3c4d5e6f');
+  assert.equal(it.author, 'Ann Dev');
+  assert.equal(it.author_url, 'https://medium.com/@anndev');
+  assert.equal(it.text, 'A token bucket in forty lines.');
+  assert.equal(it.metrics.likes, 420);
+  assert.match(it.published_at, /^2025-/);
+  assert.equal(res.items[2].author, 'Medium author');
+  const c = d.calls[0];
+  assert.equal(c.url, 'https://medium.com/_/graphql');
+  assert.equal(c.headers['graphql-operation'], 'SearchQuery');
+  assert.ok(String(c.body).includes('"query":"rate limiting"') && String(c.body).includes('"limit":10'), String(c.body));
+});
