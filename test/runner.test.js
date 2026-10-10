@@ -22,6 +22,7 @@ function world({ sites, doer, granted = true, debug = false, token = true, recip
       async getSettings() { return { debug, lang: 'auto' }; },
       async getRecipes() { return structuredClone(w.recipes); },
       async saveRecipes(r) { w.recipes = structuredClone(r); w.saved.push(r); },
+      async saveResults(v) { w.results = structuredClone(v); },
       async saveOffered(o) { w.offered = o; w.saved.push(o); },
       async saveShape(v) { w.shape = v; },
       async saveRaw(site, text) { w.raw.push({ site, text }); w.saved.push(text); },
@@ -266,4 +267,24 @@ test('debug: the captured request shape holds the requests and no cookie value',
   const out = JSON.stringify(w.shape);
   assert.ok(!out.includes(CT0) && !out.includes(JSESSION));
   for (const r of w.shape.requests) assert.ok(!Object.keys(r.requestHeaders).some((k) => /cookie|authorization|csrf/i.test(k)));
+});
+
+test('Run now records an outcome per site: ok, no tasks, server back-off, permission', async () => {
+  const w = world({ sites: xServer(), doer: staticDoer ? staticDoer({}) : null, granted: false });
+  await runAll({ force: true }, w.deps);
+  assert.equal(w.results.done, true);
+  assert.equal(w.results.sites.x.status, 'permission');
+
+  const w2 = world({ sites: xServer({ tasks: [] }), doer: null });
+  await runAll({ force: true }, w2.deps);
+  assert.equal(w2.results.sites.x.status, 'notasks');
+
+  const w3 = world({ sites: xServer({ tasks: [], backoff_until: '2026-10-10T13:00:00Z' }), doer: null });
+  await runAll({ force: true }, w3.deps);
+  assert.equal(w3.results.sites.x.status, 'backoff');
+  assert.equal(w3.results.sites.x.until, Date.parse('2026-10-10T13:00:00Z'));
+
+  const w4 = world({ sites: xServer(), doer: null, token: false });
+  await runAll({ force: true }, w4.deps);
+  assert.equal(w4.results.general, 'signed-out');
 });

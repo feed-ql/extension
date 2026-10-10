@@ -19,7 +19,7 @@ async function call(url, init = {}) {
 
 /** {sites: {site: {enabled, recipe?, recipe_version, min_interval_sec, due, tasks, last_synced_at}}, offered: [...]}. */
 export async function getTasks({ force = false } = {}) {
-  const r = await call(force ? `${EXT_API.tasks}?force=1` : EXT_API.tasks);
+  const r = await call(force ? `${EXT_API.tasks}?force=1&steal=1` : EXT_API.tasks);
   if (!r.ok) throw new Error(`tasks: HTTP ${r.status}`);
   const b = await r.json();
   return { sites: b.sites || {}, offered: b.offered || [] };

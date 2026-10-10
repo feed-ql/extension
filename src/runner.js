@@ -124,7 +124,7 @@ async function runSite(site, srv, rec, session, ctx) {
   if (!failed) {
     await deps.store.patchSite(site, { lastRunAt: now, lastOk: true, lastCount: accepted, lastDuplicates: duplicates, lastFetched: fetched, lastError, failures: 0, backoffUntil: 0, pushedTotal: (st0.pushedTotal || 0) + accepted });
     await deps.api.reportStatus(site, { ok: true, count: accepted, tasks: cursors });
-    return;
+    return { status: 'ok', count: accepted, duplicates };
   }
   const failures = st0.failures + 1;
   let backoffUntil, error;
@@ -137,6 +137,7 @@ async function runSite(site, srv, rec, session, ctx) {
   }
   await deps.store.patchSite(site, { lastRunAt: now, lastOk: false, lastCount: accepted, lastDuplicates: duplicates, lastError: error, failures, backoffUntil });
   await deps.api.reportStatus(site, { ok: false, count: accepted, error: error.slice(0, 200), backoff_until: new Date(backoffUntil).toISOString() });
+  return { status: refusal?.auth ? 'signedout' : 'error', error, count: accepted, until: backoffUntil };
 }
 
 const siteLocal = (state, site) => store.siteState(state, site);
@@ -156,9 +157,20 @@ export async function cacheOffered(deps, server) {
  */
 export async function runAll({ force = false, only = null } = {}, deps = liveDeps()) {
   const st = await deps.store.getState();
-  if (st.running && deps.now().getTime() - st.runningSince < RUN_LOCK_MS) return { skipped: 'busy' };
-  if (!(await deps.token())) return { skipped: 'signed-out' };
+  // Per-site outcome of a "Run now" press, kept for the popup (a pass from the alarm leaves it alone).
+  const results = {};
+  const report = async (site, r) => { results[site] = r; if (force) await deps.store.saveResults?.({ at: deps.now().getTime(), done: false, sites: results }); };
+  if (st.running && deps.now().getTime() - st.runningSince < RUN_LOCK_MS) {
+    if (force) await deps.store.saveResults?.({ at: deps.now().getTime(), done: true, general: 'busy', sites: {} });
+    return { skipped: 'busy' };
+  }
+  if (!(await deps.token())) {
+    if (force) await deps.store.saveResults?.({ at: deps.now().getTime(), done: true, general: 'signed-out', sites: {} });
+    return { skipped: 'signed-out' };
+  }
   await deps.store.saveState({ ...st, running: true, runningSince: deps.now().getTime() });
+  if (force) await deps.store.saveResults?.({ at: deps.now().getTime(), done: false, sites: {} });
+  let general = '';
   try {
     const settings = await deps.store.getSettings();
     const server = await deps.api.getTasks({ force });
@@ -180,24 +192,37 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
     const shape = [];
     for (const [site, srv, rec] of jobs) {
       if (only && site !== only) continue;
-      if (!(srv.tasks || []).length) continue;
       const now = deps.now().getTime();
       const cur = siteLocal(await deps.store.getState(), site);
       const interval = clampInterval(srv.min_interval_sec, rec.pacing.min_interval_sec);
       const on = { ...cur, enabled: true };
-      if (force ? on.backoffUntil > now : !due(on, now, interval)) continue;
+      const srvUntil = srv.backoff_until ? Date.parse(srv.backoff_until) : 0;
+      if (!(srv.tasks || []).length) {
+        if (srvUntil > now) await report(site, { status: 'backoff', until: srvUntil, reason: 'server' });
+        else if (srv.next_due_at && !force) await report(site, { status: 'notdue', until: Date.parse(srv.next_due_at) });
+        else await report(site, { status: 'notasks' });
+        continue;
+      }
+      if (force ? on.backoffUntil > now : !due(on, now, interval)) {
+        await report(site, on.backoffUntil > now ? { status: 'backoff', until: on.backoffUntil, reason: cur.lastError || 'site' } : { status: 'notdue', until: cur.lastRunAt + interval * 1000 });
+        continue;
+      }
       const origins = permissionOrigins(rec);
       if (origins.length && !(await deps.contains(origins))) {
         await failSite(deps, site, 'permission to read this site was not granted: switch it off and on again in the popup', { backoff: false });
+        await report(site, { status: 'permission' });
         continue;
       }
-      await runSite(site, srv, rec, session, { deps, settings, secrets, shape });
+      await report(site, { status: 'running' });
+      await report(site, (await runSite(site, srv, rec, session, { deps, settings, secrets, shape })) || { status: 'ok', count: 0 });
     }
     if (settings.debug && shape.length) await deps.store.saveShape?.({ at: deps.now().getTime(), requests: shape });
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof api.SignedOutError ? 'signed-out' : e.message };
+    general = e instanceof api.SignedOutError ? 'signed-out' : e.message;
+    return { error: general };
   } finally {
+    if (force) await deps.store.saveResults?.({ at: deps.now().getTime(), done: true, general, sites: results });
     const cur = await deps.store.getState();
     await deps.store.saveState({ ...cur, running: false, runningSince: 0 });
   }

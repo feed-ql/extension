@@ -11,7 +11,35 @@ function clock(ts) {
   return new Date(ts).toLocaleTimeString(document.documentElement.lang, { hour: '2-digit', minute: '2-digit' });
 }
 
-function siteCard(offer, meta, st) {
+function resultLine(offer, r) {
+  const p = document.createElement('p');
+  p.className = 'result';
+  const set = (txt, cls) => { p.textContent = txt; p.classList.add(cls); };
+  if (!r) return null;
+  switch (r.status) {
+    case 'ok': set(T.resOk(r.count, r.duplicates), 'good'); break;
+    case 'running': set(T.resRunning, 'muted'); break;
+    case 'notasks': set(T.resNoTasks, 'muted'); break;
+    case 'notdue': set(T.resNotDue(clock(r.until)), 'muted'); break;
+    case 'backoff': set(T.resBackoff(clock(r.until), r.reason), 'bad'); break;
+    case 'signedout': set(T.resSignedOut(offer.label || offer.site), 'bad'); break;
+    case 'permission': {
+      set(T.resPerm, 'bad');
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn ghost'; b.textContent = T.allow;
+      b.addEventListener('click', async () => {
+        const ok = await chrome.permissions.request({ origins: permissionOrigins(offer) }).catch(() => false);
+        if (ok) { await send('runNow'); } else { toast = T.permDenied; render(); }
+      });
+      p.append(' ', b);
+      break;
+    }
+    default: set(T.resError(r.error || r.status), 'bad');
+  }
+  return p;
+}
+
+function siteCard(offer, meta, st, res) {
   const site = offer.site;
   const en = !!offer.enabled;
   const el = document.createElement('div');
@@ -58,6 +86,8 @@ function siteCard(offer, meta, st) {
   }
   if (st.pushedTotal) add(T.total(st.pushedTotal));
   el.append(stat);
+  const rl = resultLine(offer, res);
+  if (rl) el.append(rl);
   if (st.backoffUntil > Date.now()) { const p = document.createElement('p'); p.className = 'err'; p.textContent = T.backoff(clock(st.backoffUntil)); el.append(p); }
   if (st.lastError) { const p = document.createElement('p'); p.className = 'err'; p.textContent = st.lastError; el.append(p); }
   return el;
@@ -80,7 +110,7 @@ async function toggle(offer, input) {
 }
 
 function render() {
-  const { settings, state, signedIn, offered } = snap;
+  const { settings, state, signedIn, offered, results } = snap;
   T = STRINGS[pickLang(settings.lang)];
   document.documentElement.lang = pickLang(settings.lang);
   $('title').textContent = T.title;
@@ -113,14 +143,18 @@ function render() {
   $('adv').hidden = !signedIn;
   const list = $('sites');
   const sites = offered?.offered || [];
-  if (sites.length) list.replaceChildren(...sites.map((o) => siteCard(o, offered.sites?.[o.site], state.sites[o.site] || {})));
+  if (sites.length) list.replaceChildren(...sites.map((o) => siteCard(o, offered.sites?.[o.site], state.sites[o.site] || {}, results?.sites?.[o.site])));
   else { const p = document.createElement('p'); p.className = 'muted'; p.textContent = T.noSites; list.replaceChildren(p); }
-  $('msg').hidden = !toast;
-  $('msg').textContent = toast;
+  const gen = results?.general;
+  const genText = gen === 'busy' ? T.resBusy : gen === 'signed-out' ? T.errSignedOut : gen ? T.resGeneral(gen) : '';
+  const shown = toast || genText;
+  $('msg').hidden = !shown;
+  $('msg').textContent = shown;
   const run = $('run');
-  run.textContent = state.running ? T.running : T.runNow;
-  run.disabled = state.running;
-  run.classList.toggle('busy', state.running);
+  const busy = state.running || (results && !results.done && Date.now() - results.at < 120000);
+  run.textContent = busy ? T.running : T.runNow;
+  run.disabled = busy;
+  run.classList.toggle('busy', busy);
   $('advTitle').textContent = T.advanced;
   $('debugLabel').textContent = T.debug;
   $('debug').checked = settings.debug;
@@ -134,7 +168,10 @@ function render() {
 async function refresh() { snap = await send('state'); render(); }
 
 $('lang').addEventListener('change', async (e) => { snap = await send('lang', { lang: e.target.value }); render(); });
-$('run').addEventListener('click', async () => { snap = await send('runNow'); render(); });
+$('run').addEventListener('click', async () => {
+  const r = await send('runNow').catch((e) => ({ error: e.message }));
+  if (r?.state) { snap = r; render(); } else { toast = T.resGeneral(r?.error || 'no answer from the background worker'); await refresh(); }
+});
 $('debug').addEventListener('change', async (e) => { snap = await send('debug', { on: e.target.checked }); render(); });
 $('saveRaw').addEventListener('click', async () => {
   const raw = await send('raw');

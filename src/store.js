@@ -66,3 +66,7 @@ export const clearRaw = () => chrome.storage.local.remove('raw');
 export const getShape = () => get('shape', null);
 export const saveShape = (v) => set('shape', v);
 export const clearShape = () => chrome.storage.local.remove('shape');
+
+/** Outcome of the last "Run now": {at, done, general?, sites: {site: {status, ...}}}; the popup shows it per site. */
+export const getResults = () => get('results', null);
+export const saveResults = (v) => set('results', v);
