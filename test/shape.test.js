@@ -25,22 +25,23 @@ test('large bodies are truncated', () => {
 
 import { listOffered } from '../src/offered.js';
 
-test('opening the popup never leases tasks: stale cache refreshes through the read-only status call', async () => {
-  let cache = { at: 0, offered: [{ site: 'x', label: 'X', enabled: true, hosts: ['x.com'] }, { site: 'gone', label: 'G' }], sites: { x: { enabled: true } } };
+test('opening the popup never leases: the list comes from the read-only offered call', async () => {
+  let cache = { at: 0, offered: [{ site: 'gone', label: 'G' }], sites: { x: { enabled: true, recipe_version: 3 }, gone: {} } };
   const calls = [];
   const api = {
     async getTasks() { calls.push('tasks'); throw new Error('must not lease'); },
-    async getSiteStates() { calls.push('status'); return { x: { label: 'X2', enabled: false } }; },
+    async getOffered() { calls.push('offered'); return [{ site: 'x', label: 'X', enabled: false, hosts: ['x.com'], needs_permission_origins: ['https://x.com/*'] }]; },
   };
   const deps = { getOffered: async () => cache, saveOffered: async (c) => { cache = c; }, api, now: () => 1e12 };
   const r = await listOffered(deps);
-  assert.deepEqual(calls, ['status']);
-  assert.equal(r.offered.length, 1);
-  assert.equal(r.offered[0].enabled, false);
-  assert.deepEqual(r.offered[0].hosts, ['x.com']);
-  const fresh = await listOffered({ ...deps, getOffered: async () => ({ ...cache, at: 1e12 }) });
-  assert.deepEqual(calls, ['status']); // fresh cache: no call at all
-  assert.ok(fresh);
-  assert.equal(await listOffered({ ...deps, getOffered: async () => null }), null); // empty cache: nothing, not a lease
+  assert.deepEqual(calls, ['offered']);
+  assert.deepEqual(r.offered.map((o) => o.site), ['x']);
+  assert.equal(r.sites.x.enabled, false);
+  assert.equal(r.sites.x.recipe_version, 3);
+  assert.ok(!('gone' in r.sites));
+  await listOffered({ ...deps, getOffered: async () => ({ ...cache, at: 1e12 }) });
+  assert.deepEqual(calls, ['offered']); // fresh cache: no call
+  cache = null;
+  assert.equal((await listOffered({ ...deps, getOffered: async () => null })).offered.length, 1); // fresh install
   assert.ok(!calls.includes('tasks'));
 });

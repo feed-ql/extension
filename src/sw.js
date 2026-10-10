@@ -43,7 +43,7 @@ async function neededByOthers(except, cached) {
 
 const handlers = {
   state: snapshot,
-  async signIn() { await signIn(); runAll(); return snapshot(); },
+  async signIn() { await signIn(); await offeredList({ force: true }); runAll(); return snapshot(); },
   async signOut() { await signOut(); return snapshot(); },
   /** The popup has already asked Chrome for the origins (that needs its click). Here: tell the server, tidy up. */
   async toggle({ site, enabled }) {
