@@ -1,0 +1,5 @@
+icons/*.png
+dist/
+node_modules/
+*.pem
+*.zip
