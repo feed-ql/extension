@@ -235,23 +235,28 @@ test('signed out, busy', async () => {
   assert.equal(w3.state.running, false, 'the lock is released');
 });
 
-test('the status report carries the page cursor a task ended on', async () => {
+test('the status report carries a cursor only for an unfinished catch-up', async () => {
   const body = JSON.stringify({ data: { c: { cursorType: 'Bottom', value: 'NEXT1' }, t: [{ __typename: 'Tweet', rest_id: '9', legacy: { full_text: 'hi', created_at: 'Fri Oct 10 10:00:00 +0000 2026' }, core: { user_results: { result: { legacy: { screen_name: 'ann' } } } } }] } });
   const d = xDoer();
   d.bodies.search = body;
   const server = xServer();
-  server.sites.x.tasks = [server.sites.x.tasks[0]];
+  server.sites.x.tasks = [{ ...server.sites.x.tasks[0], catchup: true, pages: 1 }, { ...server.sites.x.tasks[1], id: 't2' }];
   const w = world({ sites: server, doer: d });
   await runAll({}, w.deps);
-  assert.deepEqual(w.reports.at(-1).tasks, [{ id: 't1', cursor: 'NEXT1' }]);
+  // only the unfinished catch-up carries a cursor; the normal task is reported without one
+  assert.deepEqual(w.reports.at(-1).tasks, [{ id: 't1', cursor: 'NEXT1' }, { id: 't2' }]);
 });
 
-test('a catch-up task continues from its cursor; a normal task does not', async () => {
+test('a catch-up resumes at page 2; page 1 of every task is the newest', async () => {
+  const body = (c) => JSON.stringify({ data: { c: { cursorType: 'Bottom', value: c }, t: [{ __typename: 'Tweet', rest_id: String(Math.random()).slice(2), legacy: { full_text: 'hi', created_at: 'Fri Oct 10 10:00:00 +0000 2026' }, core: { user_results: { result: { legacy: { screen_name: 'ann' } } } } }] } });
   const d = xDoer();
+  const f = d.fetch;
+  d.fetch = async (req) => (req.stepId === 'search' ? (d.calls.push(req), { status: 200, headers: new Headers(), body: body('NEXT') }) : f(req));
   const w = world({ sites: xServer({ tasks: [{ id: 'c1', kind: 'search', query: 'old', max: 20, since: '2026-01-01T00:00:00Z', cursor: 'RESUME', pages: 2, catchup: true }] }), doer: d });
   await runAll({}, w.deps);
-  const q = decodeURIComponent(d.calls.find((c) => c.stepId === 'search').url);
-  assert.ok(q.includes('"cursor":"RESUME"'), q);
+  const q = d.calls.filter((c) => c.stepId === 'search').map((c) => decodeURIComponent(c.url));
+  assert.equal(q.length, 2);
+  assert.ok(!q[0].includes('RESUME') && q[1].includes('"cursor":"RESUME"'), q.join('\n'));
 });
 
 test('debug: the captured request shape holds the requests and no cookie value', async () => {

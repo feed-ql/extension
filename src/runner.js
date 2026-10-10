@@ -101,8 +101,8 @@ async function runSite(site, srv, rec, session, ctx) {
       if (i > 0) await deps.sleep(jitter(pacing.min_gap_sec, pacing.max_gap_sec, deps.rnd) * 1000);
       try {
         const since = task.since ? new Date(task.since) : null;
-        // Page 1 is always the newest; the stored cursor only continues older pages of a catch-up.
-        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.catchup ? task.cursor || '' : '' }, env);
+        // The executor keeps page 1 on the newest; task.cursor only resumes an interrupted catch-up from page 2.
+        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.cursor || '', catchup: !!task.catchup }, env);
         fetched += res.items.length;
         for (const part of chunk(res.items, BATCH)) {
           const r = await deps.api.pushItems(site, part.map((it) => ({ ...it, query: task.query })));
@@ -110,7 +110,7 @@ async function runSite(site, srv, rec, session, ctx) {
           duplicates += r.duplicates;
         }
         okTasks++;
-        if (res.nextCursor) cursors.push({ id: task.id, cursor: res.nextCursor });
+        cursors.push(res.unfinished && res.nextCursor ? { id: task.id, cursor: res.nextCursor } : { id: task.id });
       } catch (e) {
         if (e instanceof Refusal) { refusal = e; break; }
         if (e instanceof api.SignedOutError) throw e;
