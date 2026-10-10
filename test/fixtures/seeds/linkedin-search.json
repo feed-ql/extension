@@ -1,0 +1,250 @@
+{
+  "schema": 1,
+  "id": "linkedin-posts",
+  "site": "linkedin",
+  "kind": "search",
+  "label": "LinkedIn",
+  "default_enabled": true,
+  "hosts": [
+    "www.linkedin.com"
+  ],
+  "item_hosts": [
+    "linkedin.com"
+  ],
+  "needs_permission_origins": [
+    "https://www.linkedin.com/*"
+  ],
+  "tasks": {
+    "per_run": 1,
+    "max": 10,
+    "terms": 3,
+    "max_query_len": 180,
+    "count_factor": 1,
+    "page_size": 10
+  },
+  "steps": [
+    {
+      "id": "search_graphql",
+      "request": {
+        "url": "https://www.linkedin.com/voyager/api/graphql?includeWebMetadata=true&variables=(start:{offset},count:{count},origin:GLOBAL_SEARCH_HEADER,query:(keywords:{query|restli},flagshipSearchIntent:SEARCH_SRP,queryParameters:List((key:resultType,value:List(CONTENT)),(key:sortBy,value:List(date_posted))),includeFiltersInResponse:false))&queryId=voyagerSearchDashClusters.b0928897b71bd00a5a7291755dcd64f0",
+        "headers": {
+          "accept": "application/vnd.linkedin.normalized+json+2.1",
+          "csrf-token": "{cookie:JSESSIONID@www.linkedin.com|unquote}",
+          "x-restli-protocol-version": "2.0.0",
+          "x-li-lang": "en_US"
+        },
+        "credentials": "include"
+      },
+      "expect": "json",
+      "soft_fail_statuses": [
+        400,
+        404,
+        500
+      ]
+    },
+    {
+      "id": "search_rest",
+      "fallback_for": "search_graphql",
+      "request": {
+        "url": "https://www.linkedin.com/voyager/api/search/dash/clusters?decorationId=com.linkedin.voyager.dash.deco.search.SearchClusterCollection-186&origin=GLOBAL_SEARCH_HEADER&q=all&query=(keywords:{query|restli},flagshipSearchIntent:SEARCH_SRP,queryParameters:(resultType:List(CONTENT),sortBy:List(date_posted)),includeFiltersInResponse:false)&start={offset}&count={count}",
+        "headers": {
+          "accept": "application/vnd.linkedin.normalized+json+2.1",
+          "csrf-token": "{cookie:JSESSIONID@www.linkedin.com|unquote}",
+          "x-restli-protocol-version": "2.0.0",
+          "x-li-lang": "en_US"
+        },
+        "credentials": "include"
+      },
+      "expect": "json"
+    }
+  ],
+  "paginate": {
+    "step": "search_graphql",
+    "offset_step": 10,
+    "max_pages": 1,
+    "catchup_max_pages": 3,
+    "stop_at_since": true
+  },
+  "items": {
+    "source": [
+      "search_graphql",
+      "search_rest"
+    ],
+    "root": {
+      "path": "$.included[?(@.commentary)]"
+    },
+    "joins": {
+      "counts": {
+        "root": {
+          "path": "$.included[?(@.numLikes)]"
+        },
+        "key": {
+          "any_of": [
+            {
+              "path": "@.metadata.backendUrn",
+              "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+              "group": 1
+            },
+            {
+              "path": "@.updateMetadata.urn",
+              "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+              "group": 1
+            },
+            {
+              "path": "@.entityUrn",
+              "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+              "group": 1
+            },
+            {
+              "path": "@.preDashEntityUrn",
+              "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+              "group": 1
+            },
+            {
+              "path": "@['*socialDetail']",
+              "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+              "group": 1
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "id",
+        "any_of": [
+          {
+            "path": "@.metadata.backendUrn",
+            "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+            "group": 1
+          },
+          {
+            "path": "@.updateMetadata.urn",
+            "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+            "group": 1
+          },
+          {
+            "path": "@.entityUrn",
+            "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+            "group": 1
+          },
+          {
+            "path": "@.preDashEntityUrn",
+            "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+            "group": 1
+          },
+          {
+            "path": "@['*socialDetail']",
+            "regex": "urn:li:(?:activity|ugcPost|share):(\\d{10,25})",
+            "group": 1
+          }
+        ]
+      },
+      {
+        "name": "text",
+        "any_of": [
+          {
+            "path": "@.commentary.text.text"
+          },
+          {
+            "path": "@.commentary.text"
+          }
+        ],
+        "truncate": 8000
+      },
+      {
+        "name": "published",
+        "template": "{item.id}",
+        "as": "time_snowflake_ms"
+      },
+      {
+        "name": "name",
+        "path": "@.actor.name.text"
+      },
+      {
+        "name": "profile",
+        "any_of": [
+          {
+            "path": "@.actor.navigationContext.actionTarget"
+          },
+          {
+            "path": "@.actor.navigationUrl"
+          }
+        ],
+        "regex": "^(https://www\\.linkedin\\.com/[^?#]*)",
+        "group": 1
+      },
+      {
+        "name": "likes",
+        "join": "counts",
+        "key": "{item.id}",
+        "path": "@.numLikes",
+        "as": "int"
+      },
+      {
+        "name": "reposts",
+        "join": "counts",
+        "key": "{item.id}",
+        "path": "@.numShares",
+        "as": "int"
+      },
+      {
+        "name": "replies",
+        "join": "counts",
+        "key": "{item.id}",
+        "path": "@.numComments",
+        "as": "int"
+      }
+    ],
+    "drop_if": [
+      {
+        "var": "id",
+        "empty": true
+      },
+      {
+        "var": "text",
+        "empty": true
+      },
+      {
+        "var": "published",
+        "empty": true
+      }
+    ],
+    "map": {
+      "external_id": "{item.id}",
+      "url": "https://www.linkedin.com/feed/update/urn:li:activity:{item.id}/",
+      "text": "{item.text}",
+      "author": "{item.name ?? const.anonymous}",
+      "author_url": "{item.profile}",
+      "published_at": "{item.published}",
+      "metrics": {
+        "likes": "{item.likes}",
+        "reposts": "{item.reposts}",
+        "replies": "{item.replies}"
+      }
+    }
+  },
+  "consts": {
+    "anonymous": "LinkedIn member"
+  },
+  "pacing": {
+    "min_interval_sec": 1800,
+    "min_gap_sec": 45,
+    "max_gap_sec": 90,
+    "backoff_statuses": [
+      401,
+      403,
+      429,
+      999
+    ],
+    "auth_statuses": [
+      401,
+      403
+    ],
+    "backoff_base_sec": 1800,
+    "max_backoff_sec": 43200,
+    "retry_after_headers": [
+      "retry-after"
+    ]
+  }
+}

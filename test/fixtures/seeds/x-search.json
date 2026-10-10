@@ -1,0 +1,342 @@
+{
+  "schema": 1,
+  "id": "x-search",
+  "site": "x",
+  "kind": "search",
+  "label": "X",
+  "default_enabled": true,
+  "hosts": [
+    "x.com",
+    "*.x.com",
+    "abs.twimg.com"
+  ],
+  "item_hosts": [
+    "x.com",
+    "twitter.com"
+  ],
+  "needs_permission_origins": [
+    "https://x.com/*",
+    "https://*.x.com/*",
+    "https://abs.twimg.com/*"
+  ],
+  "tasks": {
+    "per_run": 2,
+    "max": 20,
+    "terms": 5,
+    "max_query_len": 180,
+    "count_factor": 2,
+    "page_size": 40
+  },
+  "consts": {
+    "bearer": "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+    "features": {
+      "rweb_video_screen_enabled": false,
+      "rweb_cashtags_enabled": true,
+      "profile_label_improvements_pcf_label_in_post_enabled": true,
+      "responsive_web_profile_redirect_enabled": false,
+      "rweb_tipjar_consumption_enabled": false,
+      "verified_phone_label_enabled": false,
+      "creator_subscriptions_tweet_preview_api_enabled": true,
+      "responsive_web_graphql_timeline_navigation_enabled": true,
+      "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+      "premium_content_api_read_enabled": false,
+      "communities_web_enable_tweet_community_results_fetch": true,
+      "c9s_tweet_anatomy_moderator_badge_enabled": true,
+      "responsive_web_grok_analyze_button_fetch_trends_enabled": false,
+      "responsive_web_grok_analyze_post_followups_enabled": true,
+      "rweb_cashtags_composer_attachment_enabled": true,
+      "responsive_web_jetfuel_frame": true,
+      "responsive_web_grok_share_attachment_enabled": true,
+      "responsive_web_grok_annotations_enabled": true,
+      "articles_preview_enabled": true,
+      "responsive_web_edit_tweet_api_enabled": true,
+      "rweb_conversational_replies_downvote_enabled": false,
+      "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
+      "view_counts_everywhere_api_enabled": true,
+      "longform_notetweets_consumption_enabled": true,
+      "responsive_web_twitter_article_tweet_consumption_enabled": true,
+      "content_disclosure_indicator_enabled": true,
+      "content_disclosure_ai_generated_indicator_enabled": true,
+      "responsive_web_grok_show_grok_translated_post": true,
+      "responsive_web_grok_analysis_button_from_backend": true,
+      "post_ctas_fetch_enabled": true,
+      "freedom_of_speech_not_reach_fetch_enabled": true,
+      "standardized_nudges_misinfo": true,
+      "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+      "longform_notetweets_rich_text_read_enabled": true,
+      "longform_notetweets_inline_media_enabled": false,
+      "responsive_web_grok_image_annotation_enabled": true,
+      "responsive_web_grok_imagine_annotation_enabled": true,
+      "responsive_web_grok_community_note_auto_translation_is_enabled": true,
+      "responsive_web_enhance_cards_enabled": false
+    }
+  },
+  "steps": [
+    {
+      "id": "home",
+      "request": {
+        "url": "https://x.com/home",
+        "credentials": "include"
+      },
+      "expect": "text",
+      "cache_sec": 10800,
+      "extract": [
+        {
+          "var": "home",
+          "from": "body"
+        },
+        {
+          "var": "chunk",
+          "regex": ",(\\d+):[\"']ondemand\\.s[\"']",
+          "group": 1,
+          "required": "not signed in on x.com (no chunk map on /home)"
+        },
+        {
+          "var": "hash",
+          "regex": ",{var.chunk}:\"([0-9a-f]+)\"",
+          "group": 1,
+          "required": "x.com home page has no ondemand.s hash"
+        }
+      ]
+    },
+    {
+      "id": "script",
+      "request": {
+        "url": "https://abs.twimg.com/responsive-web/client-web/ondemand.s.{var.hash}a.js",
+        "credentials": "omit"
+      },
+      "expect": "text",
+      "cache_sec": 10800,
+      "extract": [
+        {
+          "var": "script",
+          "from": "body"
+        }
+      ]
+    },
+    {
+      "id": "xct",
+      "transform": {
+        "name": "x_transaction_id",
+        "args": {
+          "home": "{var.home}",
+          "script": "{var.script}",
+          "method": "GET",
+          "path": "/i/api/graphql/099UqLkXma7fhT81Jv4n9g/SearchTimeline"
+        },
+        "out": "xct"
+      }
+    },
+    {
+      "id": "search",
+      "request": {
+        "url": "https://x.com/i/api/graphql/099UqLkXma7fhT81Jv4n9g/SearchTimeline",
+        "query": {
+          "variables": {
+            "rawQuery": "{query} -filter:retweets -filter:replies{?since_date} since:{since_date}{/}",
+            "count": "{count}",
+            "querySource": "typed_query",
+            "product": "Top",
+            "withGrokTranslatedBio": false,
+            "withQuickPromoteEligibilityTweetFields": false,
+            "cursor": "{cursor}"
+          },
+          "features": "{const.features}"
+        },
+        "headers": {
+          "authorization": "Bearer {const.bearer}",
+          "content-type": "application/json",
+          "x-csrf-token": "{cookie:ct0@x.com}",
+          "x-twitter-active-user": "yes",
+          "x-twitter-auth-type": "OAuth2Session",
+          "x-twitter-client-language": "en",
+          "x-client-transaction-id": "{var.xct}"
+        },
+        "credentials": "include"
+      },
+      "expect": "json",
+      "errors": {
+        "404": "SearchTimeline answered 404 (query id rotated or transaction id rejected)"
+      }
+    }
+  ],
+  "paginate": {
+    "step": "search",
+    "cursor": {
+      "path": "$..[?(@.cursorType=='Bottom')].value"
+    },
+    "max_pages": 1,
+    "catchup_max_pages": 3
+  },
+  "items": {
+    "source": [
+      "search"
+    ],
+    "root": {
+      "path": "$..[?(@.__typename=='Tweet')]"
+    },
+    "vars": [
+      {
+        "name": "id",
+        "path": "@.rest_id"
+      },
+      {
+        "name": "screen",
+        "any_of": [
+          {
+            "path": "@.core.user_results.result.legacy.screen_name"
+          },
+          {
+            "path": "@.core.user_results.result.core.screen_name"
+          }
+        ]
+      },
+      {
+        "name": "name",
+        "any_of": [
+          {
+            "path": "@.core.user_results.result.legacy.name"
+          },
+          {
+            "path": "@.core.user_results.result.core.name"
+          }
+        ]
+      },
+      {
+        "name": "text",
+        "any_of": [
+          {
+            "path": "@.note_tweet.note_tweet_results.result.text"
+          },
+          {
+            "path": "@.legacy.full_text"
+          }
+        ]
+      },
+      {
+        "name": "published",
+        "path": "@.legacy.created_at",
+        "as": "time_x_created_at"
+      },
+      {
+        "name": "likes",
+        "path": "@.legacy.favorite_count",
+        "as": "int"
+      },
+      {
+        "name": "reposts",
+        "path": "@.legacy.retweet_count",
+        "as": "int"
+      },
+      {
+        "name": "replies",
+        "path": "@.legacy.reply_count",
+        "as": "int"
+      },
+      {
+        "name": "is_reply",
+        "path": "@.legacy.in_reply_to_status_id_str",
+        "as": "exists"
+      },
+      {
+        "name": "is_retweet",
+        "path": "@.legacy.retweeted_status_result",
+        "as": "exists"
+      },
+      {
+        "name": "lang",
+        "path": "@.legacy.lang",
+        "ignore": [
+          "und"
+        ]
+      },
+      {
+        "name": "links",
+        "path": "@.legacy.entities.urls[*].expanded_url",
+        "all": true
+      },
+      {
+        "name": "status_url",
+        "template": "https://x.com/{item.screen}/status/{item.id}"
+      },
+      {
+        "name": "author_full",
+        "template": "{?item.name}{item.name} (@{item.screen}){/}"
+      },
+      {
+        "name": "author_plain",
+        "template": "@{item.screen}"
+      }
+    ],
+    "drop_if": [
+      {
+        "var": "is_retweet",
+        "truthy": true
+      },
+      {
+        "var": "is_reply",
+        "truthy": true
+      },
+      {
+        "var": "text",
+        "empty": true
+      },
+      {
+        "var": "screen",
+        "empty": true
+      },
+      {
+        "var": "published",
+        "empty": true
+      }
+    ],
+    "pick_link": {
+      "var": "links",
+      "skip_hosts": [
+        "x.com",
+        "twitter.com",
+        "t.co"
+      ],
+      "into": "link"
+    },
+    "map": {
+      "external_id": "{item.id}",
+      "url": "{item.status_url}",
+      "text": "{item.text}{?item.link}\n\nLink: {item.link}{/}",
+      "author": "{item.author_full ?? item.author_plain}",
+      "author_url": "https://x.com/{item.screen}",
+      "published_at": "{item.published}",
+      "lang": "{item.lang}",
+      "place": "@{item.screen|lower}",
+      "metrics": {
+        "likes": "{item.likes}",
+        "reposts": "{item.reposts}",
+        "replies": "{item.replies}"
+      }
+    }
+  },
+  "pacing": {
+    "min_interval_sec": 900,
+    "min_gap_sec": 20,
+    "max_gap_sec": 35,
+    "backoff_statuses": [
+      401,
+      403,
+      420,
+      429,
+      226
+    ],
+    "auth_statuses": [
+      401,
+      403
+    ],
+    "backoff_base_sec": 1800,
+    "max_backoff_sec": 43200,
+    "retry_after_headers": [
+      "retry-after"
+    ],
+    "reset_headers": [
+      "x-rate-limit-reset"
+    ]
+  }
+}
