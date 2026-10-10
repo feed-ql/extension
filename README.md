@@ -19,7 +19,7 @@ interpreter: `../backend/internal/extrecipe`.
   requested at runtime from the popup switch (`chrome.permissions.request`), `<all_urls>` is only the optional ceiling.
 - Cookies: `src/cookies.js` is the only reader; a value goes into one request header and nowhere else.
 - `popup/` lists the offered sites with a switch (`PUT /ext/sites`), last synced / last run, Run now (`?force=1`), debug raw
-  capture; UA/EN in `src/i18n.js`; tokens from backend `site.css`.
+  capture and redacted request-shape capture (`src/capture.js`); the popup never leases tasks (`src/offered.js`); UA/EN in `src/i18n.js`; tokens from backend `site.css`.
 - Tests: `npm install` once (dev only: linkedom, a DOM for the HTML tests), then `npm test` (node --test, no network). They run
   the executor on the Go reference's fixtures (`test/fixtures/README.md` lists their origin; `test/drift.test.js` compares them with
   the backend checkout). Zip: `scripts/pack.sh [out.zip]` (generates icons; excludes tests, scripts, keys).

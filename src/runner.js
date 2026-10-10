@@ -11,6 +11,7 @@ import { due, clampInterval, jitter, nextBackoff, chunk } from './pacing.js';
 import { Session, runTask, Refusal, StepError } from './engine/exec.js';
 import { TRANSFORMS, checkRecipe } from './engine/transforms.js';
 import { permissionOrigins } from './engine/hosts.js';
+import { Secrets, redactEntry } from './capture.js';
 
 const RUN_LOCK_MS = 15 * 60 * 1000;
 
@@ -81,10 +82,11 @@ async function runSite(site, srv, rec, session, ctx) {
   const env = {
     fetch: async (req) => {
       const out = await deps.fetch(req);
+      if (settings.debug && ctx.shape) ctx.shape.push(redactEntry({ ...req, status: out.status, resp: out.body }, ctx.secrets));
       if (settings.debug && rec.items.source.includes(req.stepId) && out.status >= 200 && out.status < 300) await deps.store.saveRaw(site, out.body);
       return out;
     },
-    cookie: deps.cookie,
+    cookie: async (name, host) => { const v = await deps.cookie(name, host); if (settings.debug) ctx.secrets.add(v); return v; },
     now: deps.now,
     transforms: TRANSFORMS,
     html: deps.html,
@@ -99,7 +101,8 @@ async function runSite(site, srv, rec, session, ctx) {
       if (i > 0) await deps.sleep(jitter(pacing.min_gap_sec, pacing.max_gap_sec, deps.rnd) * 1000);
       try {
         const since = task.since ? new Date(task.since) : null;
-        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.cursor || '' }, env);
+        // Page 1 is always the newest; the stored cursor only continues older pages of a catch-up.
+        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.catchup ? task.cursor || '' : '' }, env);
         fetched += res.items.length;
         for (const part of chunk(res.items, BATCH)) {
           const r = await deps.api.pushItems(site, part.map((it) => ({ ...it, query: task.query })));
@@ -173,6 +176,8 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
     await cacheOffered(deps, server);
     await deps.syncRules(active);
     const session = new Session(deps.sessionStore);
+    const secrets = new Secrets();
+    const shape = [];
     for (const [site, srv, rec] of jobs) {
       if (only && site !== only) continue;
       if (!(srv.tasks || []).length) continue;
@@ -186,8 +191,9 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
         await failSite(deps, site, 'permission to read this site was not granted: switch it off and on again in the popup', { backoff: false });
         continue;
       }
-      await runSite(site, srv, rec, session, { deps, settings });
+      await runSite(site, srv, rec, session, { deps, settings, secrets, shape });
     }
+    if (settings.debug && shape.length) await deps.store.saveShape?.({ at: deps.now().getTime(), requests: shape });
     return { ok: true };
   } catch (e) {
     return { error: e instanceof api.SignedOutError ? 'signed-out' : e.message };

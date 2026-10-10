@@ -23,6 +23,7 @@ function world({ sites, doer, granted = true, debug = false, token = true, recip
       async getRecipes() { return structuredClone(w.recipes); },
       async saveRecipes(r) { w.recipes = structuredClone(r); w.saved.push(r); },
       async saveOffered(o) { w.offered = o; w.saved.push(o); },
+      async saveShape(v) { w.shape = v; },
       async saveRaw(site, text) { w.raw.push({ site, text }); w.saved.push(text); },
     },
     token: async () => (token ? 'tok' : null),
@@ -78,7 +79,7 @@ test('a run: tasks in, items out with query, status reported, paced between task
   assert.equal(w.offered.sites.x.recipe_version, 3);
   // since/cursor of the lease went into the request
   const first = decodeURIComponent(d.calls.find((c) => c.stepId === 'search').url);
-  assert.ok(first.includes('since:2026-01-01') && first.includes('"cursor":"START"'), first);
+  assert.ok(first.includes('since:2026-01-01') && !first.includes('START'), first); // page 1 is the newest: the stored cursor is not sent
   // the cookie value: in the one request header to x.com, nowhere else
   const text = allStrings(w);
   assert.ok(!text.includes(CT0) && !text.includes(JSESSION), 'a cookie value leaked into what the extension keeps or sends to feedql');
@@ -243,4 +244,21 @@ test('the status report carries the page cursor a task ended on', async () => {
   const w = world({ sites: server, doer: d });
   await runAll({}, w.deps);
   assert.deepEqual(w.reports.at(-1).tasks, [{ id: 't1', cursor: 'NEXT1' }]);
+});
+
+test('a catch-up task continues from its cursor; a normal task does not', async () => {
+  const d = xDoer();
+  const w = world({ sites: xServer({ tasks: [{ id: 'c1', kind: 'search', query: 'old', max: 20, since: '2026-01-01T00:00:00Z', cursor: 'RESUME', pages: 2, catchup: true }] }), doer: d });
+  await runAll({}, w.deps);
+  const q = decodeURIComponent(d.calls.find((c) => c.stepId === 'search').url);
+  assert.ok(q.includes('"cursor":"RESUME"'), q);
+});
+
+test('debug: the captured request shape holds the requests and no cookie value', async () => {
+  const w = world({ sites: xServer(), doer: xDoer(), debug: true });
+  await runAll({}, w.deps);
+  assert.ok(w.shape.requests.length >= 2);
+  const out = JSON.stringify(w.shape);
+  assert.ok(!out.includes(CT0) && !out.includes(JSESSION));
+  for (const r of w.shape.requests) assert.ok(!Object.keys(r.requestHeaders).some((k) => /cookie|authorization|csrf/i.test(k)));
 });

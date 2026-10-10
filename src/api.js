@@ -48,3 +48,10 @@ export async function getServerStatus() {
   const r = await call(EXT_API.status);
   return r.ok ? r.json() : null;
 }
+
+/** Read-only (leases nothing, moves no rotation): {site: {label, enabled}} from GET /ext/status. */
+export async function getSiteStates() {
+  const r = await call(EXT_API.status);
+  if (!r.ok) throw new Error(`status: HTTP ${r.status}`);
+  return (await r.json()).sites || {};
+}

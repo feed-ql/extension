@@ -2,9 +2,10 @@
 // install (run what is due now), and on popup messages.
 import { ALARM, TICK_MINUTES, OFFERED_TTL_MS } from './config.js';
 import { jitter } from './pacing.js';
-import { runAll, cacheOffered, liveDeps } from './runner.js';
+import { runAll } from './runner.js';
+import { listOffered } from './offered.js';
 import { signIn, signOut } from './auth.js';
-import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes } from './store.js';
+import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape } from './store.js';
 import * as api from './api.js';
 import { permissionOrigins } from './engine/hosts.js';
 import { syncHeaderRules } from './headers.js';
@@ -23,18 +24,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 });
 ensureAlarm();
 
-/** The server's site list, from cache unless it is older than OFFERED_TTL_MS (or force). Never throws. */
-async function offeredList({ force = false } = {}) {
-  let cached = await getOffered();
-  if (force || !cached || Date.now() - cached.at > OFFERED_TTL_MS) {
-    try {
-      const server = await api.getTasks();
-      await cacheOffered(liveDeps(), server);
-      cached = await getOffered();
-    } catch { /* offline or signed out: show the cache */ }
-  }
-  return cached;
-}
+const offeredList = (o) => listOffered({ getOffered, saveOffered, api, now: Date.now }, o);
 
 async function snapshot() {
   const [settings, state, auth] = await Promise.all([getSettings(), getState(), getAuth()]);
@@ -53,7 +43,7 @@ async function neededByOthers(except, cached) {
 
 const handlers = {
   state: snapshot,
-  async signIn() { await signIn(); await offeredList({ force: true }); runAll(); return snapshot(); },
+  async signIn() { await signIn(); runAll(); return snapshot(); },
   async signOut() { await signOut(); return snapshot(); },
   /** The popup has already asked Chrome for the origins (that needs its click). Here: tell the server, tidy up. */
   async toggle({ site, enabled }) {
@@ -81,7 +71,7 @@ const handlers = {
     const s = await getSettings();
     s.debug = !!on;
     await saveSettings(s);
-    if (!on) await clearRaw();
+    if (!on) { await clearRaw(); await clearShape(); }
     return snapshot();
   },
   async lang({ lang }) {
@@ -96,6 +86,7 @@ const handlers = {
   },
   async serverStatus() { return api.getServerStatus().catch(() => null); },
   raw: getRaw,
+  shape: getShape,
 };
 
 chrome.runtime.onMessage.addListener((msg, _sender, send) => {
