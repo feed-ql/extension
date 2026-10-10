@@ -12,3 +12,5 @@ them with the backend checkout when it sits next to this repo and fails on a dif
 | `linkedin-search.synthetic.json` | `internal/extrecipe/testdata/linkedin-search.synthetic.json` (synthetic Voyager sample) |
 | `xct-golden.go-output.txt` | printed by the Go `xcli` transaction-id implementation (golden values for `src/xct.js`) |
 | `html-sample.html` | extension only: a small page for the `expect: "html"` / CSS selector path |
+| `seeds/medium-search.json` | `internal/extrecipe/seeds/medium-search.json` (seed recipe, Medium) |
+| `medium-search.handauthored.json` | `internal/extrecipe/testdata/medium-search.handauthored.json` (HAND-AUTHORED, not recorded; shape not verified live) |

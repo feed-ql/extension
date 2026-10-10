@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "id": "medium-search",
+  "site": "medium",
+  "kind": "search",
+  "label": "Medium",
+  "default_enabled": false,
+  "hosts": [
+    "medium.com"
+  ],
+  "item_hosts": [
+    "medium.com"
+  ],
+  "needs_permission_origins": [
+    "https://medium.com/*"
+  ],
+  "tasks": {
+    "per_run": 1,
+    "max": 10,
+    "terms": 3,
+    "max_query_len": 120,
+    "count_factor": 1,
+    "page_size": 10
+  },
+  "steps": [
+    {
+      "id": "search",
+      "request": {
+        "method": "POST",
+        "url": "https://medium.com/_/graphql",
+        "headers": {
+          "content-type": "application/json",
+          "accept": "*/*",
+          "graphql-operation": "SearchQuery",
+          "graphql-operation-name": "SearchQuery",
+          "apollographql-client-name": "lite",
+          "apollographql-client-version": "main-20240101-000000-0000000000"
+        },
+        "body": [
+          {
+            "operationName": "SearchQuery",
+            "variables": {
+              "query": "{query}",
+              "pagingOptions": {
+                "limit": "{count}",
+                "page": 0
+              }
+            },
+            "query": "query SearchQuery($query: String!, $pagingOptions: SearchPagingOptions!) { search(query: $query) { __typename posts(pagingOptions: $pagingOptions) { __typename items { __typename id title uniqueSlug firstPublishedAt clapCount language isLocked creator { __typename name username } previewContent { __typename subtitle } } } } }"
+          }
+        ],
+        "credentials": "include"
+      },
+      "expect": "json",
+      "errors": {
+        "400": "Medium changed the SearchQuery shape: update the recipe"
+      }
+    }
+  ],
+  "items": {
+    "source": [
+      "search"
+    ],
+    "root": {
+      "path": "$..items[?(@.uniqueSlug)]"
+    },
+    "vars": [
+      {
+        "name": "id",
+        "path": "@.id"
+      },
+      {
+        "name": "title",
+        "path": "@.title"
+      },
+      {
+        "name": "subtitle",
+        "path": "@.previewContent.subtitle"
+      },
+      {
+        "name": "name",
+        "path": "@.creator.name"
+      },
+      {
+        "name": "username",
+        "path": "@.creator.username"
+      },
+      {
+        "name": "published",
+        "path": "@.firstPublishedAt",
+        "as": "time_unix_ms"
+      },
+      {
+        "name": "claps",
+        "path": "@.clapCount",
+        "as": "int"
+      },
+      {
+        "name": "lang",
+        "path": "@.language",
+        "ignore": [
+          "und"
+        ]
+      }
+    ],
+    "drop_if": [
+      {
+        "var": "id",
+        "empty": true
+      },
+      {
+        "var": "title",
+        "empty": true
+      },
+      {
+        "var": "published",
+        "empty": true
+      }
+    ],
+    "map": {
+      "external_id": "{item.id}",
+      "url": "https://medium.com/p/{item.id}",
+      "title": "{item.title}",
+      "text": "{item.subtitle ?? item.title}",
+      "author": "{item.name ?? item.username ?? const.anonymous}",
+      "author_url": "{?item.username}https://medium.com/@{item.username}{/}",
+      "published_at": "{item.published}",
+      "lang": "{item.lang}",
+      "metrics": {
+        "likes": "{item.claps}"
+      }
+    }
+  },
+  "consts": {
+    "anonymous": "Medium author"
+  },
+  "pacing": {
+    "min_interval_sec": 3600,
+    "min_gap_sec": 30,
+    "max_gap_sec": 60,
+    "backoff_statuses": [
+      401,
+      403,
+      429
+    ],
+    "auth_statuses": [
+      401
+    ],
+    "backoff_base_sec": 3600,
+    "max_backoff_sec": 86400,
+    "retry_after_headers": [
+      "retry-after"
+    ]
+  }
+}

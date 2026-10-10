@@ -1,0 +1,91 @@
+[
+  {
+    "_comment": "HAND-AUTHORED fixture (not recorded): shape of the Medium web app SearchQuery answer as remembered, NOT verified against a live session.",
+    "data": {
+      "search": {
+        "__typename": "Search",
+        "posts": {
+          "__typename": "SearchPostConnection",
+          "items": [
+            {
+              "__typename": "Post",
+              "id": "1a2b3c4d5e6f",
+              "title": "Rate limiting in Go",
+              "uniqueSlug": "rate-limiting-in-go-1a2b3c4d5e6f",
+              "firstPublishedAt": 1760000000000,
+              "clapCount": 420,
+              "language": "en",
+              "isLocked": false,
+              "creator": {
+                "__typename": "User",
+                "name": "Ann Dev",
+                "username": "anndev"
+              },
+              "previewContent": {
+                "__typename": "PreviewContent",
+                "subtitle": "A token bucket in forty lines."
+              }
+            },
+            {
+              "__typename": "Post",
+              "id": "0f9e8d7c6b5a",
+              "title": "Locked story",
+              "uniqueSlug": "locked-story-0f9e8d7c6b5a",
+              "firstPublishedAt": 1759900000000,
+              "clapCount": 12,
+              "language": "en",
+              "isLocked": true,
+              "creator": {
+                "__typename": "User",
+                "name": "Bob",
+                "username": "bob"
+              },
+              "previewContent": {
+                "__typename": "PreviewContent",
+                "subtitle": "Member-only preview line."
+              }
+            },
+            {
+              "__typename": "Post",
+              "id": "aabbccddeeff",
+              "title": "No author or subtitle",
+              "uniqueSlug": "no-author-or-subtitle-aabbccddeeff",
+              "firstPublishedAt": 1759800000000,
+              "clapCount": 0,
+              "language": "und",
+              "isLocked": false,
+              "creator": {
+                "__typename": "User",
+                "name": "",
+                "username": ""
+              },
+              "previewContent": {
+                "__typename": "PreviewContent",
+                "subtitle": ""
+              }
+            },
+            {
+              "__typename": "Post",
+              "id": "111122223333",
+              "title": "No date",
+              "uniqueSlug": "no-date-111122223333",
+              "firstPublishedAt": null,
+              "clapCount": 1,
+              "language": "en",
+              "isLocked": false,
+              "creator": {
+                "__typename": "User",
+                "name": "C",
+                "username": "c"
+              },
+              "previewContent": {
+                "__typename": "PreviewContent",
+                "subtitle": "x"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+]
