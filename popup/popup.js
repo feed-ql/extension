@@ -126,6 +126,8 @@ function render() {
   $('debug').checked = settings.debug;
   $('saveRaw').textContent = T.saveRaw;
   $('saveRaw').disabled = !settings.debug;
+  $('saveShape').textContent = T.saveShape;
+  $('saveShape').disabled = !settings.debug;
   $('rawMsg').textContent = '';
 }
 
@@ -145,6 +147,16 @@ $('saveRaw').addEventListener('click', async () => {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
+});
+
+$('saveShape').addEventListener('click', async () => {
+  const shape = await send('shape');
+  if (!shape?.requests?.length) { $('rawMsg').textContent = T.noRaw; return; }
+  const url = URL.createObjectURL(new Blob([JSON.stringify(shape, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = `feedql-request-shape-${new Date(shape.at).toISOString().slice(0, 16).replace(/[:T]/g, '')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
 await refresh();

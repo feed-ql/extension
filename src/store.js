@@ -61,3 +61,8 @@ export async function saveRaw(site, text) {
   await set('raw', raw);
 }
 export const clearRaw = () => chrome.storage.local.remove('raw');
+
+/** Debug: the redacted request shape of the last run ({at, requests}); local only. */
+export const getShape = () => get('shape', null);
+export const saveShape = (v) => set('shape', v);
+export const clearShape = () => chrome.storage.local.remove('shape');
