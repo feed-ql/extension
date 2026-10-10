@@ -1,36 +1,80 @@
-// Service worker: wakes on an alarm (every 15-30 min, jittered; only while the browser is open), and on popup messages.
-import { ALARM, TICK_MINUTES } from './config.js';
+// Service worker: wakes on an alarm (every 15-30 min, jittered; only while the browser is open), at browser start and
+// install (run what is due now), and on popup messages.
+import { ALARM, TICK_MINUTES, OFFERED_TTL_MS } from './config.js';
 import { jitter } from './pacing.js';
-import { runAll } from './runner.js';
+import { runAll, cacheOffered, liveDeps } from './runner.js';
 import { signIn, signOut } from './auth.js';
-import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw } from './store.js';
-import { getServerStatus } from './api.js';
+import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes } from './store.js';
+import * as api from './api.js';
+import { permissionOrigins } from './engine/hosts.js';
+import { syncHeaderRules } from './headers.js';
 
 async function schedule() {
   await chrome.alarms.create(ALARM, { delayInMinutes: jitter(TICK_MINUTES.min, TICK_MINUTES.max) });
 }
+const ensureAlarm = async () => { if (!(await chrome.alarms.get(ALARM))) await schedule(); };
 
-chrome.runtime.onInstalled.addListener(schedule);
-chrome.runtime.onStartup.addListener(schedule);
+chrome.runtime.onInstalled.addListener(async () => { await schedule(); runAll(); });
+chrome.runtime.onStartup.addListener(async () => { await schedule(); runAll(); });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== ALARM) return;
   await schedule(); // re-arm first: a crash in the run must not stop the cycle
   await runAll();
 });
+ensureAlarm();
+
+/** The server's site list, from cache unless it is older than OFFERED_TTL_MS (or force). Never throws. */
+async function offeredList({ force = false } = {}) {
+  let cached = await getOffered();
+  if (force || !cached || Date.now() - cached.at > OFFERED_TTL_MS) {
+    try {
+      const server = await api.getTasks();
+      await cacheOffered(liveDeps(), server);
+      cached = await getOffered();
+    } catch { /* offline or signed out: show the cache */ }
+  }
+  return cached;
+}
 
 async function snapshot() {
   const [settings, state, auth] = await Promise.all([getSettings(), getState(), getAuth()]);
-  return { settings, state, signedIn: !!auth };
+  const offered = auth ? await offeredList() : null;
+  return { settings, state, signedIn: !!auth, offered };
+}
+
+/** Origins other enabled sites still need (so switching one off does not revoke what another uses). */
+async function neededByOthers(except, cached) {
+  const keep = new Set();
+  for (const o of cached?.offered || []) {
+    if (o.site !== except && cached.sites?.[o.site]?.enabled) for (const x of permissionOrigins(o)) keep.add(x);
+  }
+  return keep;
 }
 
 const handlers = {
   state: snapshot,
-  async signIn() { await signIn(); return snapshot(); },
+  async signIn() { await signIn(); await offeredList({ force: true }); runAll(); return snapshot(); },
   async signOut() { await signOut(); return snapshot(); },
+  /** The popup has already asked Chrome for the origins (that needs its click). Here: tell the server, tidy up. */
   async toggle({ site, enabled }) {
-    const s = await getSettings();
-    s.sites[site] = { ...s.sites[site], enabled: !!enabled };
-    await saveSettings(s);
+    const cached = await offeredList();
+    const offer = (cached?.offered || []).find((o) => o.site === site);
+    if (!offer) throw new Error('unknown site');
+    const origins = permissionOrigins(offer);
+    if (enabled && origins.length && !(await chrome.permissions.contains({ origins }))) throw new Error('permission');
+    await api.setSite(site, enabled);
+    cached.sites[site] = { ...(cached.sites[site] || {}), enabled: !!enabled };
+    cached.offered = cached.offered.map((o) => (o.site === site ? { ...o, enabled: !!enabled } : o));
+    await saveOffered(cached);
+    if (!enabled) {
+      const keep = await neededByOthers(site, cached);
+      const drop = origins.filter((o) => !keep.has(o));
+      if (drop.length) await chrome.permissions.remove({ origins: drop }).catch(() => {});
+      const recipes = await getRecipes();
+      await syncHeaderRules(Object.entries(recipes).filter(([s]) => s !== site && cached.sites[s]?.enabled).map(([, v]) => v.recipe));
+    } else {
+      runAll({ only: site });
+    }
     return snapshot();
   },
   async debug({ on }) {
@@ -50,7 +94,7 @@ const handlers = {
     runAll({ force: true }); // fire and forget: the popup watches state
     return snapshot();
   },
-  async serverStatus() { return getServerStatus().catch(() => null); },
+  async serverStatus() { return api.getServerStatus().catch(() => null); },
   raw: getRaw,
 };
 

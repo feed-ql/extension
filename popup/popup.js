@@ -1,5 +1,5 @@
 import { STRINGS, pickLang, agoText } from '../src/i18n.js';
-import { SITES } from '../src/config.js';
+import { permissionOrigins } from '../src/engine/hosts.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (type, extra = {}) => chrome.runtime.sendMessage({ type, ...extra });
@@ -11,20 +11,22 @@ function clock(ts) {
   return new Date(ts).toLocaleTimeString(document.documentElement.lang, { hour: '2-digit', minute: '2-digit' });
 }
 
-function siteCard(site, st, en) {
+function siteCard(offer, meta, st) {
+  const site = offer.site;
+  const en = !!offer.enabled;
   const el = document.createElement('div');
   el.className = 'site';
   const head = document.createElement('div');
   head.className = 'site-head';
   const h = document.createElement('h2');
-  h.textContent = T['site_' + site];
+  h.textContent = offer.label || site;
   const sw = document.createElement('label');
   sw.className = 'switch';
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.checked = en;
-  input.setAttribute('aria-label', `${T['site_' + site]}: ${T.on}/${T.off}`);
-  input.addEventListener('change', async () => { snap = await send('toggle', { site, enabled: input.checked }); render(); });
+  input.setAttribute('aria-label', `${offer.label || site}: ${T.on}/${T.off}`);
+  input.addEventListener('change', () => toggle(offer, input));
   const track = document.createElement('span');
   track.className = 'track';
   const lab = document.createElement('span');
@@ -33,12 +35,21 @@ function siteCard(site, st, en) {
   head.append(h, sw);
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = T['hint_' + site];
+  hint.textContent = T.hint;
   el.append(head, hint);
+  const hosts = permissionOrigins(offer).map((o) => o.slice('https://'.length, -2));
+  if (hosts.length) {
+    const p = document.createElement('p');
+    p.className = 'hosts';
+    p.textContent = T.access(hosts.join(', '));
+    el.append(p);
+  }
 
   const stat = document.createElement('div');
   stat.className = 'stat';
   const add = (txt, cls) => { const s = document.createElement('span'); s.textContent = txt; if (cls) s.className = cls; stat.append(s); };
+  const synced = meta?.last_synced_at ? Date.parse(meta.last_synced_at) : 0;
+  if (en) add(synced ? T.synced(agoText(Date.now() - synced, T)) : T.neverSynced);
   if (!st.lastRunAt) add(T.never);
   else {
     add(st.lastOk ? T.ok : T.failed, st.lastOk ? 'good' : 'bad');
@@ -52,8 +63,24 @@ function siteCard(site, st, en) {
   return el;
 }
 
+/** The switch. Chrome's permission prompt needs this click, so it is requested here, before the service worker is told. */
+async function toggle(offer, input) {
+  const want = input.checked;
+  input.disabled = true;
+  if (want) {
+    const origins = permissionOrigins(offer);
+    let granted = true;
+    if (origins.length) granted = await chrome.permissions.request({ origins }).catch(() => false);
+    if (!granted) { toast = T.permDenied; input.checked = false; input.disabled = false; render(); return; }
+  }
+  const r = await send('toggle', { site: offer.site, enabled: want });
+  if (r?.error) toast = r.error === 'permission' ? T.permDenied : T.errToggle(r.error);
+  else { toast = ''; snap = r; }
+  render();
+}
+
 function render() {
-  const { settings, state, signedIn } = snap;
+  const { settings, state, signedIn, offered } = snap;
   T = STRINGS[pickLang(settings.lang)];
   document.documentElement.lang = pickLang(settings.lang);
   $('title').textContent = T.title;
@@ -85,7 +112,11 @@ function render() {
   $('actions').hidden = !signedIn;
   $('adv').hidden = !signedIn;
   const list = $('sites');
-  list.replaceChildren(...SITES.map((s) => siteCard(s, state.sites[s], settings.sites[s].enabled)));
+  const sites = offered?.offered || [];
+  if (sites.length) list.replaceChildren(...sites.map((o) => siteCard(o, offered.sites?.[o.site], state.sites[o.site] || {})));
+  else { const p = document.createElement('p'); p.className = 'muted'; p.textContent = T.noSites; list.replaceChildren(p); }
+  $('msg').hidden = !toast;
+  $('msg').textContent = toast;
   const run = $('run');
   run.textContent = state.running ? T.running : T.runNow;
   run.disabled = state.running;
@@ -95,7 +126,7 @@ function render() {
   $('debug').checked = settings.debug;
   $('saveRaw').textContent = T.saveRaw;
   $('saveRaw').disabled = !settings.debug;
-  $('rawMsg').textContent = toast;
+  $('rawMsg').textContent = '';
 }
 
 async function refresh() { snap = await send('state'); render(); }
@@ -106,7 +137,7 @@ $('debug').addEventListener('change', async (e) => { snap = await send('debug', 
 $('saveRaw').addEventListener('click', async () => {
   const raw = await send('raw');
   const sites = Object.keys(raw || {});
-  if (!sites.length) { toast = T.noRaw; render(); return; }
+  if (!sites.length) { $('rawMsg').textContent = T.noRaw; return; }
   for (const s of sites) {
     const url = URL.createObjectURL(new Blob([raw[s].body], { type: 'application/json' }));
     const a = document.createElement('a');
