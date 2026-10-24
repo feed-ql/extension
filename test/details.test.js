@@ -27,6 +27,7 @@ test('details name cookies by name and host only, never a value', () => {
 
 test('a recipe about text is carried; a recipe without one has none', () => {
   const r = seed('youtube');
+  delete r.about;
   assert.deepEqual(detailsOf(r).about, {});
   r.about = { en: 'your YouTube History and Watch later', uk: 'ваші Історія та Дивитися пізніше' };
   assert.equal(detailsOf(r).about.uk, 'ваші Історія та Дивитися пізніше');

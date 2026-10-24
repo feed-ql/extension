@@ -5,50 +5,116 @@
   "kind": "list",
   "label": "YouTube",
   "default_enabled": false,
-  "hosts": ["www.youtube.com"],
-  "item_hosts": ["youtube.com"],
-  "needs_permission_origins": ["https://www.youtube.com/*"],
+  "hosts": [
+    "www.youtube.com"
+  ],
+  "item_hosts": [
+    "youtube.com"
+  ],
+  "needs_permission_origins": [
+    "https://www.youtube.com/*"
+  ],
   "tasks": {
     "per_run": 2,
     "max": 50,
     "terms": 1,
     "max_query_len": 20,
     "lists": [
-      { "id": "history", "query": "feed/history" },
-      { "id": "watch_later", "query": "playlist?list=WL" }
+      {
+        "id": "history",
+        "query": "feed/history"
+      },
+      {
+        "id": "watch_later",
+        "query": "playlist?list=WL"
+      }
     ]
   },
   "steps": [
     {
       "id": "page",
-      "request": { "method": "GET", "url": "https://www.youtube.com/{query}", "credentials": "include" },
+      "request": {
+        "method": "GET",
+        "url": "https://www.youtube.com/{query}",
+        "credentials": "include"
+      },
       "expect": "json",
-      "json_between": { "start": "var ytInitialData = ", "end": ";</script>" },
+      "json_between": {
+        "start": "var ytInitialData = ",
+        "end": ";</script>"
+      },
       "extract": [
-        { "var": "signed_in", "regex": "\"LOGGED_IN\":(true)", "group": 1, "from": "body", "required": "not signed in on youtube.com" }
+        {
+          "var": "signed_in",
+          "regex": "\"LOGGED_IN\":(true)",
+          "group": 1,
+          "from": "body",
+          "required": "not signed in on youtube.com"
+        }
       ],
-      "errors": { "404": "YouTube changed the History or Watch later address: update the recipe" }
+      "errors": {
+        "404": "YouTube changed the History or Watch later address: update the recipe"
+      }
     }
   ],
   "items": {
-    "source": ["page"],
+    "source": [
+      "page"
+    ],
     "root": {
       "any_of": [
-        { "path": "$..[?(@.contentType=='LOCKUP_CONTENT_TYPE_VIDEO')]" },
-        { "path": "$..playlistVideoRenderer" }
+        {
+          "path": "$..[?(@.contentType=='LOCKUP_CONTENT_TYPE_VIDEO')]"
+        },
+        {
+          "path": "$..playlistVideoRenderer"
+        }
       ]
     },
     "vars": [
-      { "name": "id", "any_of": [{ "path": "@.contentId" }, { "path": "@.videoId" }] },
-      { "name": "title", "any_of": [{ "path": "@.metadata.lockupMetadataViewModel.title.content" }, { "path": "@.title.runs[0].text" }] },
-      { "name": "channel", "any_of": [
-        { "path": "@.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows[0].metadataParts[0].text.content" },
-        { "path": "@.shortBylineText.runs[0].text" }
-      ] }
+      {
+        "name": "id",
+        "any_of": [
+          {
+            "path": "@.contentId"
+          },
+          {
+            "path": "@.videoId"
+          }
+        ]
+      },
+      {
+        "name": "title",
+        "any_of": [
+          {
+            "path": "@.metadata.lockupMetadataViewModel.title.content"
+          },
+          {
+            "path": "@.title.runs[0].text"
+          }
+        ]
+      },
+      {
+        "name": "channel",
+        "any_of": [
+          {
+            "path": "@.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows[0].metadataParts[0].text.content"
+          },
+          {
+            "path": "@.shortBylineText.runs[0].text"
+          }
+        ]
+      }
     ],
     "drop_if": [
-      { "var": "id", "empty": true },
-      { "var": "title", "empty": true }
+      {
+        "var": "id",
+        "empty": true
+      },
+      {
+        "var": "title",
+        "empty": true
+      }
     ],
     "map": {
       "external_id": "{item.id}",
@@ -59,15 +125,30 @@
       "published_at": "{now}"
     }
   },
-  "consts": { "unknown": "YouTube channel" },
+  "consts": {
+    "unknown": "YouTube channel"
+  },
   "pacing": {
     "min_interval_sec": 14400,
     "min_gap_sec": 20,
     "max_gap_sec": 40,
-    "backoff_statuses": [401, 403, 429],
-    "auth_statuses": [401, 403],
+    "backoff_statuses": [
+      401,
+      403,
+      429
+    ],
+    "auth_statuses": [
+      401,
+      403
+    ],
     "backoff_base_sec": 3600,
     "max_backoff_sec": 86400,
-    "retry_after_headers": ["retry-after"]
+    "retry_after_headers": [
+      "retry-after"
+    ]
+  },
+  "about": {
+    "en": "Reads your YouTube History and Watch later pages and adds those videos to your private feed, with transcripts and summaries.",
+    "uk": "Читає ваші сторінки «Історія» і «Дивитися пізніше» на YouTube і додає ці відео у вашу приватну стрічку, з транскриптами та підсумками."
   }
 }

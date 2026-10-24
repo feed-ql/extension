@@ -339,5 +339,9 @@
     "reset_headers": [
       "x-rate-limit-reset"
     ]
+  },
+  "about": {
+    "en": "Searches X for the words of your topics and adds the posts to your private feed.",
+    "uk": "Шукає в X за словами ваших тем і додає дописи у вашу приватну стрічку."
   }
 }

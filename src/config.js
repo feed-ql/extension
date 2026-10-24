@@ -4,7 +4,7 @@ export const EXTENSION_ID = 'plhenichcpggbflpgkalannbmfjhbmpd';
 export const API_BASE = 'https://api.feedql.com';
 export const OAUTH = {
   clientId: 'feedql-extension',
-  authorize: 'https://app.feedql.com/oauth/authorize',
+  authorize: 'https://feedql.app/oauth/authorize',
   token: `${API_BASE}/oauth/token`,
   scope: 'ext',
 };

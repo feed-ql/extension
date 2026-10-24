@@ -246,5 +246,9 @@
     "retry_after_headers": [
       "retry-after"
     ]
+  },
+  "about": {
+    "en": "Searches LinkedIn posts for the words of your topics and adds them to your private feed.",
+    "uk": "Шукає в дописах LinkedIn за словами ваших тем і додає їх у вашу приватну стрічку."
   }
 }

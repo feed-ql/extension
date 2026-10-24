@@ -151,5 +151,9 @@
     "retry_after_headers": [
       "retry-after"
     ]
+  },
+  "about": {
+    "en": "Searches Medium stories for the words of your topics and adds them to your private feed.",
+    "uk": "Шукає в історіях Medium за словами ваших тем і додає їх у вашу приватну стрічку."
   }
 }
