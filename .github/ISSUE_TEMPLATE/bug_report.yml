@@ -1,0 +1,22 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: Extension version, description: "From chrome://extensions" }
+    validations: { required: true }
+  - type: input
+    id: chrome
+    attributes: { label: Chrome version }
+    validations: { required: true }
+  - type: input
+    id: site
+    attributes: { label: Site, description: "e.g. x, linkedin, youtube" }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "Steps, what you expected, what you saw. Popup status text helps." }
+    validations: { required: true }
+  - type: markdown
+    attributes:
+      value: "Do not paste cookies, tokens or debug captures with personal data. Security issues: see SECURITY.md."

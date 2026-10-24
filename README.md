@@ -1,4 +1,30 @@
-# feedql collector (Chrome, Manifest V3)
+# feedql collector
+
+[![ci](https://github.com/feed-ql/extension/actions/workflows/ci.yml/badge.svg)](https://github.com/feed-ql/extension/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A Chrome extension that fills your [feedql](https://feedql.com) feed from sites that have no usable API (X, LinkedIn,
+your YouTube history…), using your own logged-in browser. feedql then deduplicates, groups, summarises and makes the
+items searchable on the web and for your AI agents (MCP).
+
+- **Opt-in per site.** Nothing is read until you switch a site on in the popup and grant its access.
+- **Cookies stay in the browser.** Only the extracted items go to feedql, into your private feed. See
+  [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+- **No remote code.** The server sends declarative recipes; the extension interprets them.
+
+## Install
+
+1. Download this repository (Code → Download ZIP) and unzip it, or `git clone`.
+2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the folder.
+3. Click the feedql icon, sign in, and switch on the sites you want.
+
+To update: pull or re-download, then press ↻ on the extension card.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). `npm install && npm test`.
+
+## Architecture
 
 A generic interpreter of server-defined **recipes**: the server decides which sites are fetched and how (hosts, requests,
 parsing, pacing); the extension runs them in the user's own logged-in browser and pushes the posts to their feedql feed. A new

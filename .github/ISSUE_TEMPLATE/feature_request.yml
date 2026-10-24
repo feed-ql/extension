@@ -1,0 +1,8 @@
+name: Feature request
+description: Suggest an improvement or a new site
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: What would you like, description: "What problem it solves for you." }
+    validations: { required: true }
