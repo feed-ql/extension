@@ -7,6 +7,7 @@ const send = (type, extra = {}) => chrome.runtime.sendMessage({ type, ...extra }
 let snap = null;
 let T = STRINGS.en;
 let toast = '';
+const openSites = new Set(); // Details panels the person opened survive a re-render
 
 function clock(ts) {
   return new Date(ts).toLocaleTimeString(document.documentElement.lang, { hour: '2-digit', minute: '2-digit' });
@@ -79,7 +80,7 @@ function siteCard(offer, meta, st, res) {
   const d = snap.details?.[site];
   const needs = en ? st.needsOk : null;
   if (needs) {
-    el.append(needsOkEl(document, T, needs, async () => {
+    el.append(needsOkEl(document, T, { ...needs, site }, async () => {
       const ok = !needs.origins?.length || await chrome.permissions.request({ origins: needs.origins }).catch(() => false);
       if (!ok) { toast = T.permDenied; render(); return; }
       const r = await send('approve', { site });
@@ -87,7 +88,9 @@ function siteCard(offer, meta, st, res) {
       render();
     }));
   }
-  if (d) el.append(detailsEl(document, T, d, { lang: document.documentElement.lang, on: en, added: needs?.added || {}, open: !!needs }));
+  if (d) el.append(detailsEl(document, T, d, { lang: document.documentElement.lang, on: en, added: needs?.added || {}, open: !!needs || openSites.has(site) }));
+  const det = el.querySelector('details.det');
+  if (det) det.addEventListener('toggle', () => { if (det.open) openSites.add(site); else openSites.delete(site); });
 
   const stat = document.createElement('div');
   stat.className = 'stat';

@@ -54,12 +54,17 @@ export function detailsEl(doc, T, d, { lang = 'en', on = false, added = {}, open
 export function needsOkEl(doc, T, needsOk, onApprove) {
   const box = doc.createElement('div');
   box.className = 'needs';
-  box.setAttribute('role', 'alert');
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-labelledby', 'needs-title-' + (needsOk.site || 'site'));
   const h = doc.createElement('strong');
+  h.id = 'needs-title-' + (needsOk.site || 'site');
   h.textContent = T.needsOk;
   box.append(h, para(doc, T.needsOkLead));
   const a = needsOk.added || {};
-  box.append(list(doc, [...(a.hosts || []), ...(a.pages || []), ...(a.cookies || [])], {}));
+  for (const [k, title] of [['hosts', T.detHosts], ['pages', T.detPages], ['cookies', T.detCookies]]) {
+    if (a[k]?.length) box.append(row(doc, title, list(doc, a[k], {})));
+  }
+  box.append(para(doc, T.needsOkWhat));
   const b = doc.createElement('button');
   b.type = 'button';
   b.className = 'btn primary';
