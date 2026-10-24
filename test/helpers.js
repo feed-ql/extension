@@ -5,7 +5,7 @@ import { TRANSFORMS } from '../src/engine/transforms.js';
 import { createDomEngine } from '../src/engine/dom.js';
 
 export const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
-export const seed = (site) => JSON.parse(fixture(`seeds/${{ x: 'x-search', medium: 'medium-search' }[site] ?? 'linkedin-search'}.json`));
+export const seed = (site) => JSON.parse(fixture(`seeds/${{ x: 'x-search', medium: 'medium-search', youtube: 'youtube-list' }[site] ?? 'linkedin-search'}.json`));
 
 /** Answers from `bodies[stepId]`; a step without a body answers 404. status/headers override per step. */
 export function staticDoer({ bodies = {}, status = {}, headers = {} } = {}) {
