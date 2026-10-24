@@ -244,3 +244,36 @@ test('YouTube list recipe: signed out, no document, broken document', async () =
   await assert.rejects(go('<html>"LOGGED_IN":true nothing</html>'), /between the markers/);
   await assert.rejects(go('"LOGGED_IN":true var ytInitialData = {oops;</script>'), /not JSON/);
 });
+
+// ---- 13.15: what a recipe may reach ----
+
+const cookieRecipe = (hosts, url, cookieHost) => ({ ...seed('x'), hosts, steps: [{ id: 'search', request: { url, headers: { 'x-t': `{cookie:ct0@${cookieHost}}` }, credentials: 'include' }, expect: 'json' }],
+  paginate: undefined, items: { source: ['search'], root: { path: '$.a' }, vars: [], map: { external_id: 'x', url: 'https://x.com/a', text: 'a', author: 'a', published_at: '{now}' } } });
+
+test('a recipe cannot call or read cookies of feedql hosts, even past the static check', async () => {
+  const d = staticDoer({ bodies: { search: '{"a":[]}' } });
+  await assert.rejects(run(cookieRecipe(['api.feedql.com'], 'https://api.feedql.com/x', 'api.feedql.com'), { query: 'q', max: 5 }, env(d)), /feedql/);
+  assert.equal(d.calls.length, 0);
+  const d2 = staticDoer({ bodies: { search: '{"a":[]}' } });
+  await assert.rejects(run(cookieRecipe(['x.com', 'feedql.com'], 'https://x.com/x', 'feedql.com'), { query: 'q', max: 5 }, env(d2)), /cookie of feedql.com/);
+  assert.equal(d2.calls.length, 0);
+});
+
+test('every request host must be inside what the person granted', async () => {
+  const d = staticDoer({ bodies: { search: '{"a":[]}' } });
+  const asked = [];
+  const e = env(d, { hostGranted: async (h) => { asked.push(h); return false; } });
+  await assert.rejects(run(cookieRecipe(['x.com'], 'https://x.com/x', 'x.com'), { query: 'q', max: 5 }, e), /access to x.com was not granted/);
+  assert.deepEqual(asked, ['x.com']);
+  assert.equal(d.calls.length, 0, 'nothing was fetched');
+  const d3 = staticDoer({ bodies: { search: '{"a":[]}' } });
+  await run(cookieRecipe(['x.com'], 'https://x.com/x', 'x.com'), { query: 'q', max: 5 }, env(d3, { hostGranted: async () => true }));
+  assert.equal(d3.calls.length, 1, 'a granted host is fetched');
+});
+
+test('a cookie goes only to its own host or registrable domain', async () => {
+  const rec = cookieRecipe(['x.com', 'evil.com'], 'https://evil.com/x', 'x.com');
+  await assert.rejects(run(rec, { query: 'q', max: 5 }, env(staticDoer({ bodies: { search: '{"a":[]}' } }))), /cookie of x.com cannot go to evil.com/);
+  const sub = cookieRecipe(['x.com', '*.x.com'], 'https://api.x.com/x', 'x.com');
+  await assert.doesNotReject(run(sub, { query: 'q', max: 5 }, env(staticDoer({ bodies: { search: '{"a":[]}' } }))));
+});
