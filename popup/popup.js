@@ -63,7 +63,7 @@ function siteCard(offer, meta, st, res) {
   head.append(h, sw);
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = T.hint;
+  hint.textContent = T[`hint_${site}`] || T.hint;
   el.append(head, hint);
   const hosts = permissionOrigins(offer).map((o) => o.slice('https://'.length, -2));
   if (hosts.length) {

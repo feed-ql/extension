@@ -216,3 +216,31 @@ test('Medium on the hand-authored fixture', async () => {
   assert.equal(c.headers['graphql-operation'], 'SearchQuery');
   assert.ok(String(c.body).includes('"query":"rate limiting"') && String(c.body).includes('"limit":10'), String(c.body));
 });
+
+test('YouTube list recipe: History and Watch later from the JSON embedded in the page', async () => {
+  const rec = seed('youtube');
+  let d = staticDoer({ bodies: { page: fixture('youtube-history.synthetic.html') } });
+  let res = await run(rec, { query: 'feed/history', max: 50 }, env(d));
+  assert.equal(d.calls[0].url, 'https://www.youtube.com/feed/history');
+  assert.equal(res.items.length, 3, JSON.stringify(res.items));
+  const a = res.items[0];
+  assert.equal(a.external_id, 'dQw4w9WgXcQ');
+  assert.equal(a.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(a.title, 'Never Gonna Give You Up');
+  assert.equal(a.author, 'Rick Astley');
+  assert.equal(a.published_at, '2026-10-10T12:00:00Z');
+  assert.equal(res.items[2].author, 'YouTube channel');
+
+  d = staticDoer({ bodies: { page: fixture('youtube-watchlater.synthetic.html') } });
+  res = await run(rec, { query: 'playlist?list=WL', max: 50 }, env(d));
+  assert.equal(d.calls[0].url, 'https://www.youtube.com/playlist?list=WL');
+  assert.deepEqual(res.items.map((i) => [i.external_id, i.author]), [['eeeeeeeeeee', 'Gopher Academy'], ['fffffffffff', 'Systems Weekly']]);
+});
+
+test('YouTube list recipe: signed out, no document, broken document', async () => {
+  const rec = seed('youtube');
+  const go = (body) => run(rec, { query: 'feed/history', max: 50 }, env(staticDoer({ bodies: { page: body } })));
+  await assert.rejects(go(fixture('youtube-history.signedout.synthetic.html')), /not signed in/);
+  await assert.rejects(go('<html>"LOGGED_IN":true nothing</html>'), /between the markers/);
+  await assert.rejects(go('"LOGGED_IN":true var ytInitialData = {oops;</script>'), /not JSON/);
+});

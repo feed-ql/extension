@@ -16,6 +16,10 @@ for (const [local, remote] of [
   ['linkedin-search.synthetic.json', 'testdata/linkedin-search.synthetic.json'],
   ['seeds/medium-search.json', 'seeds/medium-search.json'],
   ['medium-search.handauthored.json', 'testdata/medium-search.handauthored.json'],
+  ['seeds/youtube-list.json', 'seeds/youtube-list.json'],
+  ['youtube-history.synthetic.html', 'testdata/youtube-history.synthetic.html'],
+  ['youtube-history.signedout.synthetic.html', 'testdata/youtube-history.signedout.synthetic.html'],
+  ['youtube-watchlater.synthetic.html', 'testdata/youtube-watchlater.synthetic.html'],
 ]) {
   test(`fixture ${local} matches the backend copy`, { skip: !existsSync(backend(remote)) && 'backend checkout not next to this repo' }, () => {
     assert.equal(readFileSync(here(local), 'utf8'), readFileSync(backend(remote), 'utf8'));

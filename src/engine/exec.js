@@ -376,7 +376,15 @@ async function page(s, rec, env, sc, res) {
       if (r.status >= 200 && r.status < 300) resps[st.id] = r;
       else if (inList(st.soft_fail_statuses, r.status)) { soft.add(st.id); continue; } else throw refuse(rec, st, r);
       if (st.expect === 'json') {
-        try { r.json = parseJSON(r.body); } catch { throw new StepError(st.id, 'response is not JSON'); }
+        let body = r.body;
+        if (st.json_between) {
+          const b = st.json_between;
+          const i = body.indexOf(b.start);
+          const j = i < 0 ? -1 : body.indexOf(b.end, i + b.start.length);
+          if (j < 0) throw new StepError(st.id, 'no JSON document between the markers');
+          body = body.slice(i + b.start.length, j);
+        }
+        try { r.json = parseJSON(body); } catch { throw new StepError(st.id, 'response is not JSON'); }
       } else if (st.expect === 'html') {
         if (!env.html) throw new StepError(st.id, 'HTML responses are not supported here');
         r.doc = await env.html.parse(r.body);
@@ -420,7 +428,12 @@ async function buildItems(rec, r, sc, env) {
   const it = rec.items;
   const nodes = [];
   const root = it.root || {};
-  if (root.path) for (const n of evalPath(pathOf(root.path), r.json, r.json)) nodes.push({ j: n });
+  if (root.any_of?.length) {
+    for (const l of root.any_of) {
+      for (const n of evalPath(pathOf(l.path), r.json, r.json)) nodes.push({ j: n });
+      if (nodes.length) break;
+    }
+  } else if (root.path) for (const n of evalPath(pathOf(root.path), r.json, r.json)) nodes.push({ j: n });
   else if (root.selector && r.doc != null) for (const h of await env.html.select(r.doc, null, root.selector, '')) nodes.push({ h: h.id });
   const joins = {};
   for (const [name, j] of Object.entries(it.joins || {})) {
