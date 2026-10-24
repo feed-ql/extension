@@ -65,7 +65,7 @@ const handlers = {
       const recipes = await getRecipes();
       await grant(store, site, detailsFor(offer, recipes[site]), Date.now());
       // Switching on is a fresh start the person asked for: a pause or error left from an earlier run does not hold it.
-      await store.patchSite(site, { backoffUntil: 0, failures: 0, lastError: '' });
+      await store.patchSite(site, { backoffUntil: 0, failures: 0, lastError: '', lastRunAt: 0 });
     } else await revoke(store, site);
     await api.setSite(site, enabled);
     cached.sites[site] = { ...(cached.sites[site] || {}), enabled: !!enabled };
