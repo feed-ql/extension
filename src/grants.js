@@ -81,3 +81,23 @@ export async function approve(deps, site) {
   await deps.store.patchSite(site, { needsOk: null, backoffUntil: 0 });
   return true;
 }
+
+/** How long a click on a switch waits for Chrome's access prompt to be answered. */
+export const PENDING_MS = 10 * 60_000;
+
+/**
+ * Chrome's access prompt can close the popup before the click reaches the worker, so the popup records the click
+ * first (pending) and the worker finishes it once Chrome holds the access. Returns {finish, drop}: sites to switch on
+ * now, and sites whose click is too old to act on.
+ */
+export async function settlePending(pending, offers, contains, now) {
+  const finish = [];
+  const drop = [];
+  for (const [site, at] of Object.entries(pending || {})) {
+    const offer = offers.find((o) => o.site === site);
+    if (!offer || now - at > PENDING_MS) { drop.push(site); continue; }
+    const origins = permissionOrigins(offer);
+    if (!origins.length || await contains(origins)) finish.push(site);
+  }
+  return { finish, drop };
+}

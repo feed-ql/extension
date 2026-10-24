@@ -7,7 +7,7 @@ import { listOffered } from './offered.js';
 import { signIn, signOut } from './auth.js';
 import * as store from './store.js';
 import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape, getResults, saveResults, getGrants } from './store.js';
-import { detailsFor, grant, revoke, approve } from './grants.js';
+import { detailsFor, grant, revoke, approve, settlePending } from './grants.js';
 import * as api from './api.js';
 import { permissionOrigins } from './engine/hosts.js';
 import { syncHeaderRules } from './headers.js';
@@ -49,8 +49,27 @@ async function neededByOthers(except, cached) {
   return keep;
 }
 
+/** Finishes switches clicked while Chrome's access prompt was open (the prompt may have closed the popup). */
+async function finishPending() {
+  const pending = await store.getPending();
+  if (!Object.keys(pending).length) return;
+  const cached = await offeredList();
+  const { finish, drop } = await settlePending(pending, cached?.offered || [], (origins) => chrome.permissions.contains({ origins }), Date.now());
+  for (const s of [...finish, ...drop]) delete pending[s];
+  await store.savePending(pending);
+  for (const site of finish) await handlers.toggle({ site, enabled: true }).catch(() => {});
+}
+chrome.permissions.onAdded.addListener(() => { finishPending(); });
+
 const handlers = {
-  state: snapshot,
+  async state() { await finishPending(); return snapshot(); },
+  /** The popup's click on a switch, recorded before Chrome's access prompt; cancel when the person said no. */
+  async intend({ site, cancel }) {
+    const p = await store.getPending();
+    if (cancel) delete p[site]; else p[site] = Date.now();
+    await store.savePending(p);
+    return { ok: true };
+  },
   async signIn() { await signIn(); await offeredList({ force: true }); runAll(); return snapshot(); },
   async signOut() { await signOut(); return snapshot(); },
   /** The popup has already asked Chrome for the origins (that needs its click). Here: tell the server, tidy up. */

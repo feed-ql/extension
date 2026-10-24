@@ -114,3 +114,18 @@ test('switching a site on clears a stale pause, error and interval so it runs at
   assert.deepEqual(Object.keys(calls.grants), ['youtube']);
   assert.deepEqual(calls.patch, ['youtube', { backoffUntil: 0, failures: 0, lastError: '', lastRunAt: 0 }]);
 });
+
+test('a switch clicked while Chrome\'s access prompt closed the popup is finished once access is granted', async () => {
+  const { settlePending, PENDING_MS } = await import('../src/grants.js');
+  const offers = [
+    { site: 'medium', hosts: ['medium.com'], needs_permission_origins: ['https://medium.com/*'] },
+    { site: 'x', hosts: ['x.com'], needs_permission_origins: ['https://x.com/*'] },
+  ];
+  const granted = new Set(['https://medium.com/*']);
+  const contains = async (o) => o.every((x) => granted.has(x));
+  const now = 1_000_000_000;
+  const r = await settlePending({ medium: now - 1000, x: now - 1000, gone: now, old: now - PENDING_MS - 1 }, offers, contains, now);
+  assert.deepEqual(r.finish, ['medium']); // granted: switch on
+  assert.deepEqual(r.drop.sort(), ['gone', 'old']); // no longer offered, or the click is too old
+  // x: prompt not answered yet, stays pending (neither list)
+});

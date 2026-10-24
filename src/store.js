@@ -40,6 +40,10 @@ export const saveOffered = (o) => set('offered', o);
 export const getGrants = () => get('grants', null);
 export const saveGrants = (g) => set('grants', g);
 
+/** {site: at} - sites the person clicked on while Chrome's access prompt was open (it can close the popup). */
+export const getPending = () => get('pending', {});
+export const savePending = (p) => set('pending', p);
+
 /** {site: {version, recipe}} - recipes cached by recipe_version. */
 export const getRecipes = () => get('recipes', {});
 export const saveRecipes = (r) => set('recipes', r);

@@ -119,8 +119,11 @@ async function toggle(offer, input) {
   if (want) {
     const origins = permissionOrigins(offer);
     let granted = true;
+    // Chrome's prompt can close this popup; the worker finishes the switch from this record once access is granted.
+    // Not awaited: the prompt must be asked within the click.
+    if (origins.length) send('intend', { site: offer.site });
     if (origins.length) granted = await chrome.permissions.request({ origins }).catch(() => false);
-    if (!granted) { toast = T.permDenied; input.checked = false; input.disabled = false; render(); return; }
+    if (!granted) { send('intend', { site: offer.site, cancel: true }); toast = T.permDenied; input.checked = false; input.disabled = false; render(); return; }
   }
   const r = await send('toggle', { site: offer.site, enabled: want });
   if (r?.error) toast = r.error === 'permission' ? T.permDenied : T.errToggle(r.error);
