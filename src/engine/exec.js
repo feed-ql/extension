@@ -13,7 +13,7 @@
 import { parseJSON, Obj, scalar, compact } from './json.js';
 import { parsePath, evalPath, isEmptyNode } from './jsonpath.js';
 import { tpl, render, typed, hasEmptyCookie, cookiesOf, refs, stringify, List, CookieScopeError } from './template.js';
-import { hostAllowed, sameSite } from './hosts.js';
+import { hostAllowed, sameSite, isFeedqlHost } from './hosts.js';
 
 export const MAX_VAR = 4 << 20;
 const MAX_BODY = 8 << 20;
@@ -301,6 +301,9 @@ async function request(rec, st, env, sc, res) {
   let pu;
   try { pu = new URL(u); } catch { pu = null; }
   if (!pu || pu.protocol !== 'https:' || !hostAllowed(rec.hosts, pu.hostname)) throw fail("the request address is not allowed by the recipe's hosts");
+  if (isFeedqlHost(pu.hostname)) throw fail('a recipe may not call feedql hosts');
+  // The person granted Chrome access per site; every request host must still be inside that grant (13.15).
+  if (env.hostGranted && !(await env.hostGranted(pu.hostname))) throw fail(`access to ${pu.hostname} was not granted`);
   const req = { stepId: st.id, method: rq.method || 'GET', url: u, headers: {}, body: undefined, omit: rq.credentials === 'omit' };
 
   // Cookies: read here, for this request's headers only. The jar is a local that dies with this function; the values
@@ -308,7 +311,7 @@ async function request(rec, st, env, sc, res) {
   const jar = new Map();
   for (const name of Object.keys(rq.headers || {})) {
     for (const c of cookiesOf(tpl(rq.headers[name]))) {
-      if (!hostAllowed(rec.hosts, c.host) || !sameSite(c.host, pu.hostname)) throw fail(`a cookie of ${c.host} cannot go to ${pu.hostname}`);
+      if (isFeedqlHost(c.host) || !hostAllowed(rec.hosts, c.host) || !sameSite(c.host, pu.hostname)) throw fail(`a cookie of ${c.host} cannot go to ${pu.hostname}`);
       const key = `${c.name}@${c.host}`;
       if (!jar.has(key)) jar.set(key, (await env.cookie(c.name, c.host)) || '');
     }

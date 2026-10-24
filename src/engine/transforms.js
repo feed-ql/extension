@@ -1,4 +1,5 @@
 import { checkRecipeRegexes } from './regexguard.js';
+import { checkRecipeHosts } from './hosts.js';
 // The only code a recipe can name: a short, versioned list of built-in transforms that ships with the extension.
 // A new transform needs an extension release and a new recipe `schema` number (docs/sources/extension-recipes.md section 3).
 import { buildState, transactionId } from '../xct.js';
@@ -23,5 +24,6 @@ export function checkRecipe(rec) {
   for (const st of rec.steps || []) {
     if (st.transform && !Object.hasOwn(TRANSFORMS, st.transform.name)) throw new Error(`recipe uses the transform "${st.transform.name}" this extension does not have; update the extension`);
   }
+  checkRecipeHosts(rec);
   checkRecipeRegexes(rec);
 }

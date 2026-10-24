@@ -67,7 +67,7 @@ export function checkRegex(p) {
       case '(': {
         const rest = rs.slice(i, i + 4).join('');
         if (rest.startsWith('(?=') || rest.startsWith('(?!') || rest.startsWith('(?<=') || rest.startsWith('(?<!')) return 'regex look-around is not allowed';
-        stack.push({ unbounded: false });
+        stack.push({ unbounded: false, alt: false, quant: false });
         break;
       }
       case ')': {
@@ -76,15 +76,28 @@ export function checkRegex(p) {
         const { is, unb } = quantAt(rs, i + 1);
         if (g.unbounded && is && unb) return 'regex has a nested unbounded quantifier (like (a+)+): not allowed';
         if (g.unbounded && is && !unb && upperBound(rs, i + 1) > 3) return 'regex repeats a group holding an unbounded quantifier more than 3 times';
-        if (stack.length && (g.unbounded || (is && unb))) stack[stack.length - 1].unbounded = true;
+        // 13.15: a quantified group may not hold an alternation or any quantifier ((a|aa)+, (a?)+, (a{2})+): that is
+        // where backtracking blows up, and no recipe needs it.
+        if (is && (g.alt || g.quant)) return 'regex repeats a group that holds an alternation or a quantifier: not allowed';
+        if (stack.length) {
+          const top = stack[stack.length - 1];
+          if (g.unbounded || (is && unb)) top.unbounded = true;
+          if (g.alt) top.alt = true;
+          if (g.quant || is) top.quant = true;
+        }
         break;
       }
-      case '*': case '+':
-        if (stack.length) stack[stack.length - 1].unbounded = true;
+      case '|':
+        if (stack.length) stack[stack.length - 1].alt = true;
+        break;
+      case '*': case '+': case '?':
+        // a lazy/possessive marker or the "(?" of a group is not a quantifier
+        if (c === '?' && (rs[i - 1] === '(' || '*+?}'.includes(rs[i - 1]))) break;
+        if (stack.length) { stack[stack.length - 1].quant = true; if (c !== '?') stack[stack.length - 1].unbounded = true; }
         break;
       case '{': {
         const b = braces(rs, i);
-        if (b && b.hi < 0 && stack.length) stack[stack.length - 1].unbounded = true;
+        if (b && stack.length) { stack[stack.length - 1].quant = true; if (b.hi < 0) stack[stack.length - 1].unbounded = true; }
         break;
       }
       default:
