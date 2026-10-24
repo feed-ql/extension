@@ -26,30 +26,40 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). `npm install && npm test`.
 
 ## Architecture
 
-A generic interpreter of server-defined **recipes**: the server decides which sites are fetched and how (hosts, requests,
-parsing, pacing); the extension runs them in the user's own logged-in browser and pushes the posts to their feedql feed. A new
-site needs a recipe on the server, not an extension release. Spec: `../docs/sources/extension-recipes.md`; Go reference
-interpreter: `../backend/internal/extrecipe`.
+A generic interpreter of server-defined **recipes**. A recipe is JSON data (no code): which hosts a site may use, the
+requests to make, how to read the answers, how to pace. The feedql server hands out the recipes of the sites you switched
+on plus the small tasks to run; the extension fetches in your own logged-in browser and pushes the extracted items to your
+private feed. A new site needs a recipe on the server, not an extension release.
 
-- No per-site parsers. The only code a recipe can name is the built-in transform `x_transaction_id` (`src/xct.js`,
-  `src/engine/transforms.js`, versioned: `SUPPORTED_SCHEMAS`, `TRANSFORMS_VERSION`). No eval, no `new Function`, no remote JS.
-- `src/engine/`: the executor. `exec.js` (steps, extract, pagination, items, drop rules, status/backoff signals),
-  `template.js` (`{query} {cursor} {var.*} {cookie:NAME@host} {uuid} {now} {rand}`, filters), `jsonpath.js`, `json.js`
-  (order-preserving JSON), `dom.js` (CSS selectors; the DOM lives in the offscreen document `offscreen/`, the service worker has
-  none), `hosts.js` (host rules, permission origins), `transforms.js`.
-- `src/runner.js` one pass: `GET /ext/tasks` -> run each enabled, due site's tasks (since, cursor, pages, catch-up, leases) ->
-  `POST /ext/items` (with `query`) -> `POST /ext/status`. Recipes are cached by `recipe_version`. Pacing and backoff (persisted)
-  come from the recipe. `src/sw.js`: alarm (15-30 min, jittered), run at browser start and install, popup messages.
-  `src/headers.js`: Origin/Referer as dynamic declarativeNetRequest rules built from the recipes' hosts.
-- Permissions: required host access is `api.feedql.com` only; each site's origins (the recipe's `needs_permission_origins`) are
-  requested at runtime from the popup switch (`chrome.permissions.request`), `<all_urls>` is only the optional ceiling.
-- Cookies: `src/cookies.js` is the only reader; a value goes into one request header and nowhere else.
-- `popup/` lists the offered sites with a switch (`PUT /ext/sites`), last synced / last run, Run now (`?force=1`), debug raw
-  capture and redacted request-shape capture (`src/capture.js`); the popup never leases tasks (`src/offered.js`); UA/EN in `src/i18n.js`; tokens from backend `site.css`.
-- Tests: `npm install` once (dev only: linkedom, a DOM for the HTML tests), then `npm test` (node --test, no network). They run
-  the executor on the Go reference's fixtures (`test/fixtures/README.md` lists their origin; `test/drift.test.js` compares them with
-  the backend checkout). Zip: `scripts/pack.sh [out.zip]` (generates icons; excludes tests, scripts, keys).
-- Install and test steps: `../docs/sources/extension-install.md`.
+**Recipe format (schema 1)**
+
+- `site`, `label`, `kind` (`search`: a task is a query; `list`: fixed pages, e.g. a history list), optional `about` (plain-words
+  description per language) and `default_enabled` (ignored by this extension: only you switch a site on).
+- `hosts` (at most 10, exact or `*.example.com`, never a bare TLD or a public suffix, never a feedql host) and
+  `needs_permission_origins` (what Chrome is asked for when you switch the site on). A request to any other host is refused.
+- `steps`: HTTP requests (`url` with `{query}`, `{cursor}`, `{var.x}` placeholders; headers; optional `{cookie:NAME@host}` that
+  is read for that one request header and goes only to its own host or registrable domain), `expect` json/html/text, `extract`
+  variables by JSON path, CSS selector or regex, `json_between` to cut a JSON document out of a page.
+- `items`: the node list (`root`), per-item variables, drop rules and a `map` to the pushed fields
+  (`external_id,url,title,text,author,published_at,...`). `pacing`: interval, gaps, back-off statuses.
+- Limits enforced before anything runs: regexes (at most 200 characters, no back-references or look-around, no alternation or
+  quantifier inside a quantified group, 250 ms budget), hosts, headers, body sizes. A recipe that breaks them is refused.
+- The only code a recipe can name is the built-in transform `x_transaction_id` (`src/xct.js`). No eval, no remote JS.
+
+**What you control.** Every site starts off. Switching it on (popup) asks Chrome for access to exactly its hosts and records
+what you saw in **Details**: hosts, pages, cookie names, the fields sent to feedql. If a later recipe asks for more, the site
+pauses with "Needs your OK" until you approve; asking for less needs no approval.
+
+**Code map**
+
+- `src/engine/`: the executor. `exec.js` (steps, extract, pagination, items), `template.js`, `jsonpath.js`, `json.js`,
+  `dom.js` (CSS selectors; the DOM lives in the offscreen document `offscreen/`), `hosts.js` (host rules, permission origins),
+  `regexguard.js`, `details.js` (what a recipe touches), `transforms.js`.
+- `src/runner.js`: one pass: tasks and recipes from feedql, run each granted and due site, push items, report status.
+  `src/grants.js`: what you switched on and the approve/pause logic. `src/sw.js`: alarm (15-30 min), browser start, popup
+  messages. `src/headers.js`: Origin/Referer rules from the recipes' hosts. `src/cookies.js`: the only cookie reader.
+- `popup/`: sites with a switch, Details, "Needs your OK", Run now, debug capture. UA/EN in `src/i18n.js`.
+- Tests: `npm install` once (dev only: linkedom), then `npm test` (node --test, no network).
 
 Test fixtures: `x-search.recorded.json` is a real X search response with public posts of public accounts; the
 `Bearer AAAA…` in `test/fixtures/seeds/x-search.json` is X's public web-client token, not a secret. The drift tests
