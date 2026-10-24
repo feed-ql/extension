@@ -104,3 +104,13 @@ test('the popup shows a site as on only from the local grant, never from the ser
   const runner = readFileSync(new URL('../src/runner.js', import.meta.url), 'utf8');
   assert.ok(/!grants\[site\]/.test(runner), 'the runner skips a site without a grant');
 });
+
+import { grant } from '../src/grants.js';
+
+test('switching a site on clears a stale pause, error and interval so it runs at once', async () => {
+  const calls = { grants: null, patch: null };
+  const store = { getGrants: async () => null, saveGrants: async (g) => { calls.grants = g; }, patchSite: async (s, p) => { calls.patch = [s, p]; } };
+  await grant(store, 'youtube', detailsOf(seed('youtube')), 5);
+  assert.deepEqual(Object.keys(calls.grants), ['youtube']);
+  assert.deepEqual(calls.patch, ['youtube', { backoffUntil: 0, failures: 0, lastError: '', lastRunAt: 0 }]);
+});

@@ -18,6 +18,8 @@ export async function grant(store, site, details, now) {
   const g = (await store.getGrants()) || {};
   g[site] = { at: now, fp: footprintOf(details) };
   await store.saveGrants(g);
+  // Switching on is a fresh start the person asked for: a pause, error or interval left from an earlier run does not hold it.
+  await store.patchSite(site, { backoffUntil: 0, failures: 0, lastError: '', lastRunAt: 0 });
 }
 
 export async function revoke(store, site) {
