@@ -50,3 +50,7 @@ interpreter: `../backend/internal/extrecipe`.
   the executor on the Go reference's fixtures (`test/fixtures/README.md` lists their origin; `test/drift.test.js` compares them with
   the backend checkout). Zip: `scripts/pack.sh [out.zip]` (generates icons; excludes tests, scripts, keys).
 - Install and test steps: `../docs/sources/extension-install.md`.
+
+Test fixtures: `x-search.recorded.json` is a real X search response with public posts of public accounts; the
+`Bearer AAAA…` in `test/fixtures/seeds/x-search.json` is X's public web-client token, not a secret. The drift tests
+compare fixtures with the server's Go reference and are skipped outside the maintainers' checkout.
