@@ -3,12 +3,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runAll } from '../src/runner.js';
+import { detailsOf, footprintOf } from '../src/engine/details.js';
 import { SignedOutError } from '../src/api.js';
 import { seed, fixture, xDoer, staticDoer, CT0, JSESSION, cookies } from './helpers.js';
 
-function world({ sites, doer, granted = true, debug = false, token = true, recipes = {} } = {}) {
+function world({ sites, doer, granted = true, debug = false, token = true, recipes = {}, grants = 'auto' } = {}) {
   const w = { t: Date.parse('2026-10-10T12:00:00Z'), pushed: [], reports: [], sleeps: [], rules: [], raw: [], saved: [], offered: null, recipes, state: { sites: {}, running: false, runningSince: 0 }, getTasksCalls: [] };
   w.sites = sites;
+  w.grants = grants === 'auto' ? undefined : grants;
   w.deps = {
     api: {
       async getTasks(o) { w.getTasksCalls.push(o); return typeof w.sites === 'function' ? w.sites() : w.sites; },
@@ -20,6 +22,16 @@ function world({ sites, doer, granted = true, debug = false, token = true, recip
       async saveState(s) { w.state = structuredClone(s); w.saved.push(s); },
       async patchSite(site, patch) { w.state.sites[site] = { lastRunAt: 0, lastOk: null, lastCount: 0, lastDuplicates: 0, lastFetched: 0, lastError: '', failures: 0, backoffUntil: 0, pushedTotal: 0, ...w.state.sites[site], ...patch }; w.saved.push(w.state); },
       async getSettings() { return { debug, lang: 'auto' }; },
+      async getGrants() {
+        if (w.grants === undefined) { // the person switched on every site the world offers, with the footprint of its recipe
+          const sv = typeof w.sites === 'function' ? w.sites() : w.sites;
+          w.grants = {};
+          for (const [k, v] of Object.entries(sv.sites)) if (v.recipe) w.grants[k] = { at: 1, fp: footprintOf(detailsOf(v.recipe)) };
+        }
+        return structuredClone(w.grants);
+      },
+      async saveGrants(g) { w.grants = structuredClone(g); },
+      async getOffered() { return w.offered; },
       async getRecipes() { return structuredClone(w.recipes); },
       async saveRecipes(r) { w.recipes = structuredClone(r); w.saved.push(r); },
       async saveResults(v) { w.results = structuredClone(v); },
@@ -287,4 +299,86 @@ test('Run now records an outcome per site: ok, no tasks, server back-off, permis
   const w4 = world({ sites: xServer(), doer: null, token: false });
   await runAll({ force: true }, w4.deps);
   assert.equal(w4.results.general, 'signed-out');
+});
+
+// ---- 13.15: nothing runs that the person did not switch on; a wider recipe waits for their OK ----
+import { approve } from '../src/grants.js';
+
+test('a site the person never switched on does not run, whatever the server says', async () => {
+  const d = xDoer();
+  const w = world({ sites: xServer({ enabled: true }), doer: d, grants: {} });
+  const r = await runAll({}, w.deps);
+  assert.deepEqual(r, { ok: true });
+  assert.equal(d.calls.length, 0, 'nothing was fetched');
+  assert.equal(w.pushed.length, 0);
+  assert.deepEqual(w.rules, [[]], 'no header rule for it');
+  assert.equal(w.recipes.x, undefined, 'its recipe is not kept');
+});
+
+test('a recipe update that adds a host, a cookie or a page pauses the site until the person approves', async () => {
+  const d = xDoer();
+  const wide = seed('x');
+  wide.hosts = [...wide.hosts, 'cdn.example.com'];
+  const old = seed('x');
+  const w = world({ sites: xServer({ recipe: wide, recipe_version: 4 }), doer: d, grants: { x: { at: 1, fp: footprintOf(detailsOf(old)) } } });
+  await runAll({}, w.deps);
+  assert.equal(d.calls.length, 0, 'paused: nothing fetched');
+  assert.equal(w.pushed.length, 0);
+  const n = w.state.sites.x.needsOk;
+  assert.deepEqual(n.added.hosts, ['cdn.example.com']);
+  assert.deepEqual(n.added.cookies, []);
+  assert.deepEqual(w.rules, [[]], 'no header rule while paused');
+  // approving makes it run again
+  assert.equal(await approve(w.deps, 'x'), true);
+  assert.equal(w.state.sites.x.needsOk, null);
+  assert.ok(w.grants.x.fp.hosts.includes('cdn.example.com'));
+  w.t += 3600_000;
+  await runAll({}, w.deps);
+  assert.ok(d.calls.length > 0 && w.pushed.length > 0, 'runs after the OK');
+});
+
+test('a new cookie or page also needs the OK; approving without Chrome access fails', async () => {
+  for (const edit of [(r) => { r.steps[3].request.headers['x-extra'] = '{cookie:auth_token@x.com}'; }, (r) => { r.steps[3].request.url += '2'; }]) {
+    const rec = seed('x');
+    edit(rec);
+    const w = world({ sites: xServer({ recipe: rec }), doer: xDoer(), grants: { x: { at: 1, fp: footprintOf(detailsOf(seed('x'))) } }, granted: false });
+    await runAll({}, w.deps);
+    const a = w.state.sites.x.needsOk.added;
+    assert.ok(a.cookies.length + a.pages.length === 1, JSON.stringify(a));
+  }
+  const rec = seed('x');
+  rec.hosts = [...rec.hosts, 'cdn.example.com'];
+  rec.needs_permission_origins = [...rec.needs_permission_origins, 'https://cdn.example.com/*'];
+  const w = world({ sites: xServer({ recipe: rec }), doer: xDoer(), grants: { x: { at: 1, fp: footprintOf(detailsOf(seed('x'))) } }, granted: false });
+  await runAll({}, w.deps);
+  await assert.rejects(approve(w.deps, 'x'), /permission/);
+  assert.ok(!w.grants.x.fp.hosts.includes('cdn.example.com'), 'not granted without Chrome access');
+});
+
+test('a narrower recipe runs without asking and narrows the grant', async () => {
+  const d = xDoer();
+  const wide = seed('x');
+  wide.hosts = [...wide.hosts, 'cdn.example.com'];
+  const w = world({ sites: xServer(), doer: d, grants: { x: { at: 1, fp: footprintOf(detailsOf(wide)) } } });
+  await runAll({}, w.deps);
+  assert.ok(w.pushed.length > 0);
+  assert.ok(!w.grants.x.fp.hosts.includes('cdn.example.com'));
+  assert.equal(w.state.sites.x.needsOk ?? null, null);
+});
+
+test('first start after an update adopts only the sites that were on and had Chrome access', async () => {
+  const wOn = world({ sites: xServer(), doer: xDoer(), grants: null });
+  wOn.offered = { at: 1, offered: xServer().offered, sites: { x: { enabled: true } } };
+  wOn.recipes = { x: { version: 3, recipe: seed('x') } };
+  await runAll({}, wOn.deps);
+  assert.ok(wOn.grants.x, 'adopted');
+  assert.ok(wOn.pushed.length > 0);
+  const wNoPerm = world({ sites: xServer(), doer: xDoer(), grants: null, granted: false });
+  wNoPerm.offered = { at: 1, offered: xServer().offered, sites: { x: { enabled: true } } };
+  await runAll({}, wNoPerm.deps);
+  assert.deepEqual(wNoPerm.grants, {}, 'no Chrome access: not adopted');
+  const wOff = world({ sites: xServer(), doer: xDoer(), grants: null });
+  wOff.offered = { at: 1, offered: xServer().offered, sites: { x: { enabled: false } } };
+  await runAll({}, wOff.deps);
+  assert.deepEqual(wOff.grants, {}, 'was off: stays off');
 });

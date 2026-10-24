@@ -5,7 +5,9 @@ import { jitter } from './pacing.js';
 import { runAll } from './runner.js';
 import { listOffered } from './offered.js';
 import { signIn, signOut } from './auth.js';
-import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape, getResults, saveResults } from './store.js';
+import * as store from './store.js';
+import { getSettings, saveSettings, getState, getAuth, getRaw, clearRaw, getOffered, saveOffered, getRecipes, getShape, clearShape, getResults, saveResults, getGrants } from './store.js';
+import { detailsFor, grant, revoke, approve } from './grants.js';
 import * as api from './api.js';
 import { permissionOrigins } from './engine/hosts.js';
 import { syncHeaderRules } from './headers.js';
@@ -29,14 +31,20 @@ const offeredList = (o) => listOffered({ getOffered, saveOffered, api, now: Date
 async function snapshot() {
   const [settings, state, auth] = await Promise.all([getSettings(), getState(), getAuth()]);
   const offered = auth ? await offeredList() : null;
-  return { settings, state, signedIn: !!auth, offered, results: await getResults() };
+  // Details per site (what it reads, before and after switching it on) and what the person has switched on here.
+  const recipes = await getRecipes();
+  const grants = (await getGrants()) || {};
+  const details = {};
+  for (const o of offered?.offered || []) details[o.site] = detailsFor(o, grants[o.site] ? recipes[o.site] : null);
+  return { settings, state, signedIn: !!auth, offered, results: await getResults(), grants, details };
 }
 
 /** Origins other enabled sites still need (so switching one off does not revoke what another uses). */
 async function neededByOthers(except, cached) {
   const keep = new Set();
+  const grants = (await getGrants()) || {};
   for (const o of cached?.offered || []) {
-    if (o.site !== except && cached.sites?.[o.site]?.enabled) for (const x of permissionOrigins(o)) keep.add(x);
+    if (o.site !== except && grants[o.site]) for (const x of permissionOrigins(o)) keep.add(x);
   }
   return keep;
 }
@@ -52,6 +60,11 @@ const handlers = {
     if (!offer) throw new Error('unknown site');
     const origins = permissionOrigins(offer);
     if (enabled && origins.length && !(await chrome.permissions.contains({ origins }))) throw new Error('permission');
+    // The local switch is the only thing that starts a site: grant (or revoke) here first, then tell the server.
+    if (enabled) {
+      const recipes = await getRecipes();
+      await grant(store, site, detailsFor(offer, recipes[site]), Date.now());
+    } else await revoke(store, site);
     await api.setSite(site, enabled);
     cached.sites[site] = { ...(cached.sites[site] || {}), enabled: !!enabled };
     cached.offered = cached.offered.map((o) => (o.site === site ? { ...o, enabled: !!enabled } : o));
@@ -61,10 +74,18 @@ const handlers = {
       const drop = origins.filter((o) => !keep.has(o));
       if (drop.length) await chrome.permissions.remove({ origins: drop }).catch(() => {});
       const recipes = await getRecipes();
-      await syncHeaderRules(Object.entries(recipes).filter(([s]) => s !== site && cached.sites[s]?.enabled).map(([, v]) => v.recipe));
+      const grants = (await getGrants()) || {};
+      await syncHeaderRules(Object.entries(recipes).filter(([s]) => s !== site && grants[s]).map(([, v]) => v.recipe));
     } else {
       runAll({ only: site });
     }
+    return snapshot();
+  },
+  /** The person approved a recipe that asks for more; the popup has already asked Chrome for the new origins. */
+  async approve({ site }) {
+    const ok = await approve({ store, contains: (origins) => chrome.permissions.contains({ origins }), now: () => new Date() }, site);
+    if (!ok) throw new Error('nothing to approve');
+    runAll({ only: site });
     return snapshot();
   },
   async debug({ on }) {

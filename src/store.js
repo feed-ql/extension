@@ -3,7 +3,7 @@
 // recipes (cached by recipe_version), device (this install's id), auth (feedql tokens), raw (debug captures).
 
 const DEFAULT_SETTINGS = () => ({ debug: false, lang: 'auto' });
-export const DEFAULT_SITE_STATE = () => ({ lastRunAt: 0, lastOk: null, lastCount: 0, lastDuplicates: 0, lastFetched: 0, lastError: '', failures: 0, backoffUntil: 0, pushedTotal: 0 });
+export const DEFAULT_SITE_STATE = () => ({ needsOk: null, lastRunAt: 0, lastOk: null, lastCount: 0, lastDuplicates: 0, lastFetched: 0, lastError: '', failures: 0, backoffUntil: 0, pushedTotal: 0 });
 
 async function get(key, def) {
   const o = await chrome.storage.local.get(key);
@@ -35,6 +35,10 @@ export async function patchSite(site, patch) {
 /** {at, offered: [...], sites: {site: {...}}} - the last GET /ext/tasks, minus tasks and recipes. */
 export const getOffered = () => get('offered', null);
 export const saveOffered = (o) => set('offered', o);
+
+/** {site: {at, fp}} - what the person switched on and the footprint (hosts, cookies, pages) they saw; null before any. */
+export const getGrants = () => get('grants', null);
+export const saveGrants = (g) => set('grants', g);
 
 /** {site: {version, recipe}} - recipes cached by recipe_version. */
 export const getRecipes = () => get('recipes', {});

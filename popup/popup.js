@@ -1,5 +1,6 @@
 import { STRINGS, pickLang, agoText } from '../src/i18n.js';
 import { permissionOrigins } from '../src/engine/hosts.js';
+import { detailsEl, needsOkEl } from './details.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (type, extra = {}) => chrome.runtime.sendMessage({ type, ...extra });
@@ -22,6 +23,7 @@ function resultLine(offer, r) {
     case 'notasks': set(T.resNoTasks(r.reason), 'muted'); break;
     case 'notdue': set(T.resNotDue(clock(r.until)), 'muted'); break;
     case 'backoff': set(T.resBackoff(clock(r.until), r.reason), 'bad'); break;
+    case 'needsok': set(T.resNeedsOk, 'bad'); break;
     case 'signedout': set(T.resSignedOut(offer.label || offer.site), 'bad'); break;
     case 'permission': {
       set(T.resPerm, 'bad');
@@ -41,7 +43,8 @@ function resultLine(offer, r) {
 
 function siteCard(offer, meta, st, res) {
   const site = offer.site;
-  const en = !!offer.enabled;
+  // On means the person switched it on in THIS browser; the server's flag does not count (13.15).
+  const en = !!snap.grants?.[site];
   const el = document.createElement('div');
   el.className = 'site';
   const head = document.createElement('div');
@@ -72,6 +75,19 @@ function siteCard(offer, meta, st, res) {
     p.textContent = T.access(hosts.join(', '));
     el.append(p);
   }
+
+  const d = snap.details?.[site];
+  const needs = en ? st.needsOk : null;
+  if (needs) {
+    el.append(needsOkEl(document, T, needs, async () => {
+      const ok = !needs.origins?.length || await chrome.permissions.request({ origins: needs.origins }).catch(() => false);
+      if (!ok) { toast = T.permDenied; render(); return; }
+      const r = await send('approve', { site });
+      if (r?.error) toast = T.errToggle(r.error); else { toast = ''; snap = r; }
+      render();
+    }));
+  }
+  if (d) el.append(detailsEl(document, T, d, { lang: document.documentElement.lang, on: en, added: needs?.added || {}, open: !!needs }));
 
   const stat = document.createElement('div');
   stat.className = 'stat';

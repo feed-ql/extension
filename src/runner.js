@@ -12,6 +12,7 @@ import { Session, runTask, Refusal, StepError } from './engine/exec.js';
 import { TRANSFORMS, checkRecipe } from './engine/transforms.js';
 import { permissionOrigins } from './engine/hosts.js';
 import { Secrets, redactEntry } from './capture.js';
+import { adoptLegacy, review } from './grants.js';
 
 const RUN_LOCK_MS = 15 * 60 * 1000;
 
@@ -85,6 +86,10 @@ async function runSite(site, srv, rec, session, ctx) {
       if (settings.debug && ctx.shape) ctx.shape.push(redactEntry({ ...req, status: out.status, resp: out.body }, ctx.secrets));
       if (settings.debug && rec.items.source.includes(req.stepId) && out.status >= 200 && out.status < 300) await deps.store.saveRaw(site, out.body);
       return out;
+    },
+    hostGranted: async (host) => {
+      if (!ctx.hostCache.has(host)) ctx.hostCache.set(host, !!(await deps.contains([`https://${host}/*`])));
+      return ctx.hostCache.get(host);
     },
     cookie: async (name, host) => { const v = await deps.cookie(name, host); if (settings.debug) ctx.secrets.add(v); return v; },
     now: deps.now,
@@ -178,16 +183,27 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
     const before = JSON.stringify(recipes);
     const active = [];
     const jobs = [];
+    // Only a site the person switched on here runs; the server's enabled flag and default_enabled never start one.
+    const grants = await adoptLegacy(deps);
     for (const [site, srv] of Object.entries(server.sites)) {
-      if (srv.enabled === false) continue;
+      if (srv.enabled === false || !grants[site]) continue;
       const rec = await recipeFor(site, srv, deps, recipes);
-      if (rec) { try { checkRecipe(rec); active.push(rec); jobs.push([site, srv, rec]); } catch (e) { await failSite(deps, site, e.message); } } else if ((srv.tasks || []).length) await failSite(deps, site, 'recipe missing from the answer');
+      if (rec) {
+        try {
+          checkRecipe(rec);
+          const rv = await review(deps, site, rec, grants);
+          if (!rv.ok) { await report(site, { status: 'needsok' }); continue; }
+          active.push(rec);
+          jobs.push([site, srv, rec]);
+        } catch (e) { await failSite(deps, site, e.message); }
+      } else if ((srv.tasks || []).length) await failSite(deps, site, 'recipe missing from the answer');
     }
-    for (const k of Object.keys(recipes)) if (!server.sites[k] || server.sites[k].enabled === false) delete recipes[k];
+    for (const k of Object.keys(recipes)) if (!server.sites[k] || server.sites[k].enabled === false || !grants[k]) delete recipes[k];
     if (JSON.stringify(recipes) !== before) await deps.store.saveRecipes(recipes);
     await cacheOffered(deps, server);
     await deps.syncRules(active);
     const session = new Session(deps.sessionStore);
+    const hostCache = new Map();
     const secrets = new Secrets();
     const shape = [];
     for (const [site, srv, rec] of jobs) {
@@ -214,7 +230,7 @@ export async function runAll({ force = false, only = null } = {}, deps = liveDep
         continue;
       }
       await report(site, { status: 'running' });
-      await report(site, (await runSite(site, srv, rec, session, { deps, settings, secrets, shape })) || { status: 'ok', count: 0 });
+      await report(site, (await runSite(site, srv, rec, session, { deps, settings, secrets, shape, hostCache })) || { status: 'ok', count: 0 });
     }
     if (settings.debug && shape.length) await deps.store.saveShape?.({ at: deps.now().getTime(), requests: shape });
     return { ok: true };
