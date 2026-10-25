@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 - First public release under the MIT License.
 
+## [0.3.1]
+
+- A list recipe can read one more page for each new item (`detail`): the YouTube recipe now reads each new video's watch page
+  in the background (no tab, window or player; at most 20 per run, a few seconds apart) and sends its description, length,
+  upload date and caption languages with the video. Only those values go to feedql, never the page or a cookie.
+- `json_between` without `end` reads the first complete JSON value after `start`.
+- This is a widening (a new page is read), so the YouTube site pauses with "Needs your OK" until you approve it.
+
 ## [0.3.0]
 
 - Recipes are refused when a regex repeats a group holding an alternation or a quantifier, when a wildcard host sits on a
