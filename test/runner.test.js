@@ -22,6 +22,8 @@ function world({ sites, doer, granted = true, debug = false, token = true, recip
       async saveState(s) { w.state = structuredClone(s); w.saved.push(s); },
       async patchSite(site, patch) { w.state.sites[site] = { lastRunAt: 0, lastOk: null, lastCount: 0, lastDuplicates: 0, lastFetched: 0, lastError: '', failures: 0, backoffUntil: 0, pushedTotal: 0, ...w.state.sites[site], ...patch }; w.saved.push(w.state); },
       async getSettings() { return { debug, lang: 'auto' }; },
+      async getDetailed(site) { return Object.keys(w.detailed?.[site] || {}).filter((id) => w.detailed[site][id] === -1 || w.detailed[site][id] >= 3); },
+      async noteDetailed(site, tried, done) { w.detailed ||= {}; const m = (w.detailed[site] ||= {}); const ok = new Set(done); for (const id of tried) m[id] = ok.has(id) ? -1 : (m[id] > 0 ? m[id] : 0) + 1; },
       async getGrants() {
         if (w.grants === undefined) { // the person switched on every site the world offers, with the footprint of its recipe
           const sv = typeof w.sites === 'function' ? w.sites() : w.sites;
@@ -381,4 +383,50 @@ test('first start after an update adopts only the sites that were on and had Chr
   wOff.offered = { at: 1, offered: xServer().offered, sites: { x: { enabled: false } } };
   await runAll({}, wOff.deps);
   assert.deepEqual(wOff.grants, {}, 'was off: stays off');
+});
+
+
+// Story 13.19: the run reads each new video's page, sends the detail with the item, remembers what it read and does not read it again.
+test('YouTube: the follow-up detail goes with the items and a video is read once', async () => {
+  const pages = {
+    'https://www.youtube.com/feed/history': fixture('youtube-history.synthetic.html'),
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ': fixture('youtube-watch-captions.synthetic.html'),
+    'https://www.youtube.com/watch?v=bbbbbbbbbbb': fixture('youtube-watch-nocaptions.synthetic.html'),
+    'https://www.youtube.com/watch?v=ddddddddddd': '<html>nothing</html>',
+  };
+  const calls = [];
+  const doer = { async fetch(req) { calls.push(req.url); const b = pages[req.url]; return { status: b === undefined ? 404 : 200, headers: new Headers(), body: b ?? '' }; } };
+  const yt = seed('youtube');
+  const server = { sites: { youtube: { enabled: true, recipe: yt, recipe_version: 2, min_interval_sec: 14400, due: true, last_synced_at: null, tasks: [{ id: 'h', kind: 'list', query: 'feed/history', max: 50, pages: 1 }] } },
+    offered: [{ site: 'youtube', label: 'YouTube', hosts: yt.hosts, needs_permission_origins: yt.needs_permission_origins, enabled: true }] };
+  const w = world({ sites: server, doer });
+  await runAll({}, w.deps);
+  const sent = w.pushed.flatMap((p) => p.items);
+  assert.equal(sent.length, 3);
+  assert.equal(sent[0].detail.caption_langs, 'en,en,uk');
+  assert.equal(sent[1].detail.caption_langs, 'none');
+  assert.equal(sent[2].detail, undefined);
+  assert.deepEqual(w.detailed.youtube, { dQw4w9WgXcQ: -1, bbbbbbbbbbb: -1, ddddddddddd: 1 });
+  // the next run: the two read videos are skipped, the failed one is tried again (up to 3 times)
+  calls.length = 0;
+  w.t += 5 * 3600_000;
+  await runAll({}, w.deps);
+  assert.deepEqual(calls.filter((u) => u.includes('/watch')), ['https://www.youtube.com/watch?v=ddddddddddd']);
+  w.t += 5 * 3600_000; await runAll({}, w.deps);
+  w.t += 5 * 3600_000; await runAll({}, w.deps);
+  calls.length = 0;
+  w.t += 5 * 3600_000; await runAll({}, w.deps);
+  assert.deepEqual(calls.filter((u) => u.includes('/watch')), [], 'given up after three tries');
+});
+
+test('YouTube: a 429 on a watch page backs the site off but the videos found are still pushed', async () => {
+  const pages = { 'https://www.youtube.com/feed/history': fixture('youtube-history.synthetic.html') };
+  const doer = { async fetch(req) { if (req.url.includes('/watch')) return { status: 429, headers: new Headers(), body: '' }; const b = pages[req.url]; return { status: 200, headers: new Headers(), body: b }; } };
+  const yt = seed('youtube');
+  const server = { sites: { youtube: { enabled: true, recipe: yt, recipe_version: 2, min_interval_sec: 14400, due: true, last_synced_at: null, tasks: [{ id: 'h', kind: 'list', query: 'feed/history', max: 50, pages: 1 }] } },
+    offered: [{ site: 'youtube', label: 'YouTube', hosts: yt.hosts, needs_permission_origins: yt.needs_permission_origins, enabled: true }] };
+  const w = world({ sites: server, doer });
+  await runAll({}, w.deps);
+  assert.equal(w.pushed.flatMap((p) => p.items).length, 3);
+  assert.ok(w.state.sites.youtube.backoffUntil > w.t, 'backing off');
 });

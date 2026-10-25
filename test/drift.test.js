@@ -20,6 +20,8 @@ for (const [local, remote] of [
   ['youtube-history.synthetic.html', 'testdata/youtube-history.synthetic.html'],
   ['youtube-history.signedout.synthetic.html', 'testdata/youtube-history.signedout.synthetic.html'],
   ['youtube-watchlater.synthetic.html', 'testdata/youtube-watchlater.synthetic.html'],
+  ['youtube-watch-captions.synthetic.html', 'testdata/youtube-watch-captions.synthetic.html'],
+  ['youtube-watch-nocaptions.synthetic.html', 'testdata/youtube-watch-nocaptions.synthetic.html'],
 ]) {
   test(`fixture ${local} matches the backend copy`, { skip: !existsSync(backend(remote)) && 'backend checkout not next to this repo' }, () => {
     assert.equal(readFileSync(here(local), 'utf8'), readFileSync(backend(remote), 'utf8'));

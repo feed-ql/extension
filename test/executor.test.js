@@ -277,3 +277,59 @@ test('a cookie goes only to its own host or registrable domain', async () => {
   const sub = cookieRecipe(['x.com', '*.x.com'], 'https://api.x.com/x', 'x.com');
   await assert.doesNotReject(run(sub, { query: 'q', max: 5 }, env(staticDoer({ bodies: { search: '{"a":[]}' } }))));
 });
+
+// ---- Story 13.19: the per-item follow-up ----
+
+function urlDoer(pages, status = {}) {
+  const calls = [];
+  return { calls, async fetch(req) { calls.push(req.url); if (status[req.url]) return { status: status[req.url], headers: new Headers(), body: '' }; const b = pages[req.url]; return { status: b === undefined ? 404 : 200, headers: new Headers(), body: b ?? '' }; } };
+}
+const detailPages = () => ({
+  'https://www.youtube.com/feed/history': fixture('youtube-history.synthetic.html'),
+  'https://www.youtube.com/watch?v=dQw4w9WgXcQ': fixture('youtube-watch-captions.synthetic.html'),
+  'https://www.youtube.com/watch?v=bbbbbbbbbbb': fixture('youtube-watch-nocaptions.synthetic.html'),
+  'https://www.youtube.com/watch?v=ddddddddddd': '<html>no player response here</html>',
+});
+
+test('YouTube detail: each new video\'s watch page is read once; description, duration, date and caption languages go on the item', async () => {
+  const rec = seed('youtube');
+  const d = urlDoer(detailPages());
+  const gaps = [];
+  const res = await run(rec, { query: 'feed/history', max: 50 }, env(d, { fetch: (r) => d.fetch(r), pauseDetail: async (lo, hi) => { gaps.push([lo, hi]); } }));
+  assert.equal(res.items.length, 3);
+  const [a, b, c] = res.items;
+  assert.ok(a.detail.description.startsWith('The official video.') && a.detail.description.includes(';var x = 1 is not code here'));
+  assert.deepEqual([a.detail.duration_sec, a.detail.upload_date, a.detail.caption_langs, a.detail.caption_auto], ['213', '2009-10-25', 'en,en,uk', 'en,uk']);
+  assert.deepEqual([b.detail.description, b.detail.caption_langs], ['A short video without subtitles.', 'none']);
+  assert.equal(c.detail, undefined, 'a page without a player response leaves the item as it is');
+  assert.deepEqual(res.detailTried, ['dQw4w9WgXcQ', 'bbbbbbbbbbb', 'ddddddddddd']);
+  assert.deepEqual(gaps, [[3, 6], [3, 6]]);
+  assert.equal(d.calls.length, 4);
+});
+
+test('YouTube detail: videos read before are skipped, max_per_run holds, a refusal ends the follow-up but keeps the items', async () => {
+  const rec = seed('youtube');
+  let d = urlDoer(detailPages());
+  let res = await run(rec, { query: 'feed/history', max: 50, detailed: new Set(['dQw4w9WgXcQ', 'bbbbbbbbbbb']) }, env(d, { fetch: (r) => d.fetch(r) }));
+  assert.equal(d.calls.length, 2);
+  assert.ok(!res.items[0].detail && !res.items[1].detail);
+  const one = structuredClone(rec);
+  one.detail.max_per_run = 1;
+  d = urlDoer(detailPages());
+  await run(one, { query: 'feed/history', max: 50 }, env(d, { fetch: (r) => d.fetch(r) }));
+  assert.equal(d.calls.length, 2, 'the list page and one watch page');
+  d = urlDoer(detailPages(), { 'https://www.youtube.com/watch?v=dQw4w9WgXcQ': 429 });
+  res = await run(rec, { query: 'feed/history', max: 50 }, env(d, { fetch: (r) => d.fetch(r) }));
+  assert.equal(res.items.length, 3);
+  assert.ok(res.detailRefusal instanceof Refusal && res.detailRefusal.status === 429);
+  assert.equal(d.calls.length, 2);
+});
+
+test('json_between without an end reads the first complete JSON value, strings included', async () => {
+  const rec = structuredClone(seed('youtube'));
+  rec.steps[0].json_between = { start: 'var ytInitialData = ' };
+  const body = '"LOGGED_IN":true <script>var ytInitialData = {"contents":{"x":"};</script>"}};var other = 1;</script>';
+  const res = await run(rec, { query: 'feed/history', max: 5 }, env(staticDoer({ bodies: { page: body } })));
+  assert.equal(res.items.length, 0);
+  await assert.rejects(run(rec, { query: 'feed/history', max: 5 }, env(staticDoer({ bodies: { page: 'var ytInitialData = {oops' } }))), /no JSON document|not JSON/);
+});

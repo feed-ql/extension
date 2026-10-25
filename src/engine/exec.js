@@ -383,9 +383,10 @@ async function page(s, rec, env, sc, res) {
         if (st.json_between) {
           const b = st.json_between;
           const i = body.indexOf(b.start);
-          const j = i < 0 ? -1 : body.indexOf(b.end, i + b.start.length);
+          const from = i + b.start.length;
+          const j = i < 0 ? -1 : b.end ? body.indexOf(b.end, from) : firstJSONEnd(body, from);
           if (j < 0) throw new StepError(st.id, 'no JSON document between the markers');
-          body = body.slice(i + b.start.length, j);
+          body = body.slice(from, j);
         }
         try { r.json = parseJSON(body); } catch { throw new StepError(st.id, 'response is not JSON'); }
       } else if (st.expect === 'html') {
@@ -504,7 +505,71 @@ async function buildItems(rec, r, sc, env) {
  * Executes the recipe for one task. task = {query, max, since (Date|null), pages, cursor}.
  * Returns {items, pages, skipped, dropped, old, nextCursor, steps}. Throws Refusal (stop the site) or StepError (fail the task).
  */
+/** Where the first complete JSON value starting at `from` ends (index after its last character), or -1. Strings are skipped, so a brace or ";var " inside one does not count. */
+function firstJSONEnd(body, from) {
+  let i = from;
+  while (i < body.length && ' \t\r\n'.includes(body[i])) i++;
+  const open = body[i];
+  if (open !== '{' && open !== '[') return -1;
+  let depth = 0;
+  for (; i < body.length; i++) {
+    const c = body[i];
+    if (c === '"') {
+      for (i++; i < body.length && body[i] !== '"'; i++) if (body[i] === '\\') i++;
+    } else if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+const DETAIL_VALUE_MAX = 20000;
+
+/**
+ * Story 13.19: the recipe's per-item follow-up. For each item not read before (newest first), at most detail.max_per_run, the detail
+ * steps run once with the item's fields in scope and the mapped values go on the item as `detail`. One item failing leaves it as it is;
+ * a Refusal ends the follow-up and is thrown after the items are kept (the caller reports it and backs off).
+ */
+async function details(session, rec, task, env, res) {
+  const d = rec.detail;
+  const sub = { ...rec, steps: d.steps };
+  let done = 0;
+  for (const it of res.items) {
+    if (task.detailed?.has(it.external_id)) continue;
+    if (done >= d.max_per_run) break;
+    if (done > 0 && env.pauseDetail) await env.pauseDetail(d.min_gap_sec, d.max_gap_sec);
+    done++;
+    (res.detailTried ||= []).push(it.external_id);
+    const sc = { now: env.now(), vars: Object.create(null), consts: rec.consts || {}, item: { external_id: it.external_id, url: it.url, title: it.title || '', text: it.text, author: it.author } };
+    let resps;
+    try {
+      resps = await page(session, sub, env, sc, res);
+    } catch (e) {
+      if (e instanceof Refusal) throw e;
+      continue;
+    } finally {
+      // documents of an html step are released by page's caller in runTask; detail steps are json/text
+    }
+    const out = {};
+    for (const [k, t] of Object.entries(d.map)) {
+      let v = render(tpl(t), sc).trim();
+      if (!v) continue;
+      if (v.length > DETAIL_VALUE_MAX) v = v.slice(0, DETAIL_VALUE_MAX);
+      out[k] = v;
+    }
+    for (const r of Object.values(resps)) if (r.doc != null) await env.html.release(r.doc);
+    if (Object.keys(out).length) it.detail = out;
+  }
+}
+
 export async function runTask(session, rec, task, env) {
+  const res = await runList(session, rec, task, env);
+  if (rec.detail) {
+    try { await details(session, rec, task, env, res); } catch (e) { if (!(e instanceof Refusal)) throw e; res.detailRefusal = e; }
+  }
+  return res;
+}
+
+async function runList(session, rec, task, env) {
   const t = { ...task };
   if (!(t.max >= 1)) t.max = rec.tasks.max;
   t.max = Math.min(t.max, rec.tasks.max);

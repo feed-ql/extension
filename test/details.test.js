@@ -12,9 +12,9 @@ import { seed } from './helpers.js';
 test('details of the YouTube list recipe: hosts, the two lists, no cookie, the fields sent', () => {
   const d = detailsOf(seed('youtube'));
   assert.deepEqual(d.hosts, ['www.youtube.com']);
-  assert.deepEqual(d.pages, ['www.youtube.com/feed/history', 'www.youtube.com/playlist?list=WL']);
+  assert.deepEqual(d.pages, ['www.youtube.com/feed/history', 'www.youtube.com/playlist?list=WL', 'www.youtube.com/watch (each new item)']);
   assert.deepEqual(d.cookies, [], 'the browser sends the session itself; the recipe names no cookie');
-  assert.ok(d.sends.includes('title') && d.sends.includes('query') && d.sends.includes('url') && !d.sends.includes('discussion_url'));
+  assert.ok(d.sends.includes('title') && d.sends.includes('query') && d.sends.includes('url') && !d.sends.includes('discussion_url') && d.sends.includes('detail:description') && d.sends.includes('detail:caption_langs'));
 });
 
 test('details name cookies by name and host only, never a value', () => {

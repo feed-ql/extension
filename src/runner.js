@@ -96,7 +96,9 @@ async function runSite(site, srv, rec, session, ctx) {
     transforms: TRANSFORMS,
     html: deps.html,
     pause: () => deps.sleep(jitter(pacing.min_gap_sec, pacing.max_gap_sec, deps.rnd) * 1000),
+    pauseDetail: (lo, hi) => deps.sleep(jitter(lo, hi, deps.rnd) * 1000),
   };
+  const detailed = new Set((await deps.store.getDetailed?.(site)) || []);
   let accepted = 0, duplicates = 0, fetched = 0, okTasks = 0;
   let lastError = '';
   let refusal = null;
@@ -107,13 +109,15 @@ async function runSite(site, srv, rec, session, ctx) {
       try {
         const since = task.since ? new Date(task.since) : null;
         // The executor keeps page 1 on the newest; task.cursor only resumes an interrupted catch-up from page 2.
-        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.cursor || '', catchup: !!task.catchup }, env);
+        const res = await runTask(session, rec, { query: task.query, max: task.max, since, pages: task.pages, cursor: task.cursor || '', catchup: !!task.catchup, detailed }, env);
         fetched += res.items.length;
         for (const part of chunk(res.items, BATCH)) {
           const r = await deps.api.pushItems(site, part.map((it) => ({ ...it, query: task.query })));
           accepted += r.accepted;
           duplicates += r.duplicates;
         }
+        if (res.detailTried?.length) await deps.store.noteDetailed?.(site, res.detailTried, res.items.filter((it) => it.detail).map((it) => it.external_id));
+        if (res.detailRefusal) { refusal = res.detailRefusal; okTasks++; break; }
         okTasks++;
         cursors.push(res.unfinished && res.nextCursor ? { id: task.id, cursor: res.nextCursor } : { id: task.id });
       } catch (e) {

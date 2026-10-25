@@ -70,6 +70,27 @@ export async function saveRaw(site, text) {
 }
 export const clearRaw = () => chrome.storage.local.remove('raw');
 
+/**
+ * Story 13.19: the videos whose own page the extension has read, per site: {site: {id: attempts}}; a read that gave a detail is
+ * DETAIL_DONE. getDetailed lists the ids not to read again (done, or tried DETAIL_TRIES times); capped at 3000 per site.
+ */
+export const DETAIL_DONE = -1;
+export const DETAIL_TRIES = 3;
+export async function getDetailed(site) {
+  const m = (await get('detailed', {}))[site] || {};
+  return Object.keys(m).filter((id) => m[id] === DETAIL_DONE || m[id] >= DETAIL_TRIES);
+}
+export async function noteDetailed(site, tried, done) {
+  const all = await get('detailed', {});
+  const m = all[site] || {};
+  const ok = new Set(done);
+  for (const id of tried) m[id] = ok.has(id) ? DETAIL_DONE : (m[id] > 0 ? m[id] : 0) + 1;
+  const ids = Object.keys(m);
+  if (ids.length > 3000) for (const id of ids.slice(0, ids.length - 3000)) delete m[id];
+  all[site] = m;
+  await set('detailed', all);
+}
+
 /** Debug: the redacted request shape of the last run ({at, requests}); local only. */
 export const getShape = () => get('shape', null);
 export const saveShape = (v) => set('shape', v);

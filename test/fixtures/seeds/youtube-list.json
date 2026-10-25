@@ -126,7 +126,8 @@
     }
   },
   "consts": {
-    "unknown": "YouTube channel"
+    "unknown": "YouTube channel",
+    "no_captions": "none"
   },
   "pacing": {
     "min_interval_sec": 14400,
@@ -150,5 +151,62 @@
   "about": {
     "en": "Reads your YouTube History and Watch later pages and adds those videos to your private feed, with transcripts and summaries.",
     "uk": "Читає ваші сторінки «Історія» і «Дивитися пізніше» на YouTube і додає ці відео у вашу приватну стрічку, з транскриптами та підсумками."
+  },
+  "detail": {
+    "max_per_run": 20,
+    "min_gap_sec": 3,
+    "max_gap_sec": 6,
+    "steps": [
+      {
+        "id": "watch",
+        "request": {
+          "method": "GET",
+          "url": "https://www.youtube.com/watch?v={item.external_id}",
+          "credentials": "include"
+        },
+        "expect": "json",
+        "json_between": {
+          "start": "var ytInitialPlayerResponse = "
+        },
+        "extract": [
+          {
+            "var": "description",
+            "path": "$.videoDetails.shortDescription"
+          },
+          {
+            "var": "duration_sec",
+            "path": "$.videoDetails.lengthSeconds"
+          },
+          {
+            "var": "upload_date",
+            "path": "$.microformat.playerMicroformatRenderer.publishDate",
+            "regex": "^(\\d{4}-\\d{2}-\\d{2})",
+            "group": 1
+          },
+          {
+            "var": "caption_langs",
+            "path": "$.captions.playerCaptionsTracklistRenderer.captionTracks[*].languageCode",
+            "all": true,
+            "join_with": ","
+          },
+          {
+            "var": "caption_auto",
+            "path": "$.captions.playerCaptionsTracklistRenderer.captionTracks[?(@.kind=='asr')].languageCode",
+            "all": true,
+            "join_with": ","
+          }
+        ],
+        "errors": {
+          "404": "YouTube changed the watch page: update the recipe"
+        }
+      }
+    ],
+    "map": {
+      "description": "{var.description}",
+      "duration_sec": "{var.duration_sec}",
+      "upload_date": "{var.upload_date}",
+      "caption_langs": "{var.caption_langs ?? const.no_captions}",
+      "caption_auto": "{var.caption_auto}"
+    }
   }
 }

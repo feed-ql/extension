@@ -24,14 +24,15 @@ export function detailsOf(rec) {
   const cookies = [];
   const pages = [];
   const lists = rec.kind === 'list' ? (rec.tasks?.lists || []) : null;
-  for (const st of rec.steps || []) {
+  for (const st of [...(rec.steps || []), ...(rec.detail?.steps || [])]) {
     const rq = st.request;
     if (!rq) continue;
     for (const name of Object.keys(rq.headers || {})) for (const c of cookiesOf(tpl(rq.headers[name]))) cookies.push(`${c.name}@${c.host}`);
-    if (lists && rq.url.includes('{query}')) for (const l of lists) pages.push(pageOf(rq.url, l.query));
+    if (rq.url.includes('{item.')) pages.push(`${pageOf(rq.url)} (each new item)`);
+    else if (lists && rq.url.includes('{query}')) for (const l of lists) pages.push(pageOf(rq.url, l.query));
     else pages.push(pageOf(rq.url));
   }
-  const sends = Object.keys(rec.items?.map || {}).filter((k) => rec.items.map[k] !== '' && rec.items.map[k] !== null);
+  const sends = [...Object.keys(rec.items?.map || {}).filter((k) => rec.items.map[k] !== '' && rec.items.map[k] !== null), ...Object.keys(rec.detail?.map || {}).map((k) => `detail:${k}`)];
   return {
     hosts: uniq(rec.hosts || []),
     cookies: uniq(cookies),
