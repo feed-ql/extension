@@ -10,6 +10,6 @@
     "pack": "bash scripts/pack.sh"
   },
   "devDependencies": {
-    "linkedom": "0.18.14"
+    "linkedom": "0.18.15"
   }
 }
